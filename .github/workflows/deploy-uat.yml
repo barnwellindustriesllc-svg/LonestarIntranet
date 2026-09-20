@@ -15,11 +15,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  validate:
+    name: Validate PHP
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Lint PHP files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          find com org \
+            -type f \
+            -name "*.php" \
+            -print0 \
+          | while IFS= read -r -d '' file; do
+              echo "Checking $file"
+              php -l "$file"
+            done
+
+  deploy:
+    name: Deploy Lone Star UAT
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
       - name: Configure SSH
+        shell: bash
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
@@ -27,10 +58,21 @@ jobs:
           printf '%s\n' "${{ secrets.UAT_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
-          ssh-keyscan -t ed25519 77.68.28.42 > ~/.ssh/known_hosts
+          ssh-keyscan -t ed25519 77.68.28.42 > /tmp/lonestar_host_key
+
+          ACTUAL_FINGERPRINT="$(ssh-keygen -lf /tmp/lonestar_host_key -E sha256 | awk '{print $2}')"
+          EXPECTED_FINGERPRINT="SHA256:b2p8BiimcfXyXCdiKbgy9QBQsrs072rERV3eRpfXZjc"
+
+          if [ "$ACTUAL_FINGERPRINT" != "$EXPECTED_FINGERPRINT" ]; then
+            echo "VPS SSH host fingerprint does not match."
+            exit 1
+          fi
+
+          cat /tmp/lonestar_host_key >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy UAT
+        shell: bash
         run: |
           ssh deploy@77.68.28.42 <<'EOF'
             set -euo pipefail
@@ -38,10 +80,11 @@ jobs:
             deploy_repo() {
               REPO="$1"
 
+              echo "Deploying $REPO"
               cd "$REPO"
 
               if [ -n "$(git status --porcelain)" ]; then
-                echo "ERROR: Working tree is dirty."
+                echo "ERROR: Working tree is dirty. Deployment stopped."
                 git status --short
                 exit 1
               fi
@@ -49,6 +92,8 @@ jobs:
               git fetch origin uat
               git checkout uat
               git merge --ff-only origin/uat
+
+              echo "Now running commit:"
               git log -1 --oneline
             }
 
