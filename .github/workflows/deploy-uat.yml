@@ -52,23 +52,30 @@ jobs:
       - name: Configure SSH
         shell: bash
         run: |
+          set -euo pipefail
+
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
           printf '%s\n' "${{ secrets.UAT_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
-          ssh-keyscan -t ed25519 77.68.28.42 > /tmp/lonestar_host_key
+          ssh-keyscan -t ed25519 77.68.28.42 > /tmp/lonestar_known_hosts
 
-          ACTUAL_FINGERPRINT="$(ssh-keygen -lf /tmp/lonestar_host_key -E sha256 | awk '{print $2}')"
+          cut -d' ' -f2- /tmp/lonestar_known_hosts > /tmp/lonestar_host_key.pub
+
+          ACTUAL_FINGERPRINT="$(ssh-keygen -lf /tmp/lonestar_host_key.pub -E sha256 | awk '{print $2}')"
           EXPECTED_FINGERPRINT="SHA256:b2p8BiimcfXyXCdiKbgy9QBQsrs072rERV3eRpfXZjc"
+
+          echo "Expected: $EXPECTED_FINGERPRINT"
+          echo "Actual:   $ACTUAL_FINGERPRINT"
 
           if [ "$ACTUAL_FINGERPRINT" != "$EXPECTED_FINGERPRINT" ]; then
             echo "VPS SSH host fingerprint does not match."
             exit 1
           fi
 
-          cat /tmp/lonestar_host_key >> ~/.ssh/known_hosts
+          cat /tmp/lonestar_known_hosts >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy UAT
