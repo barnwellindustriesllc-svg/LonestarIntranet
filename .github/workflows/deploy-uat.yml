@@ -107,3 +107,33 @@ jobs:
             deploy_repo /var/www/uat.lonestarroadsidetx.com/repo
             deploy_repo /var/www/uat.lonestarroadsidetx.org/repo
           EOF
+
+
+      - name: Verify UAT sites
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          check_url() {
+            URL="$1"
+            echo "Checking $URL"
+
+            STATUS="$(curl \
+              --silent \
+              --show-error \
+              --location \
+              --output /dev/null \
+              --write-out "%{http_code}" \
+              --max-time 20 \
+              "$URL")"
+
+            echo "$URL returned HTTP $STATUS"
+
+            if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 400 ]; then
+              echo "Health check failed for $URL"
+              exit 1
+            fi
+          }
+
+          check_url "http://uat.lonestarroadsidetx.com"
+          check_url "http://uat.lonestarroadsidetx.org"
