@@ -33,7 +33,7 @@ if ($isUat && $envLabel === '') {
         <img src="img/logo.png" alt="Lonestar Roadside LLC Logo" />
       </div>
       <div class="brand-text">
-        <span class="brand-name">LONESTAR ROADSIDE LLC - Test</span>
+        <span class="brand-name">LONESTAR ROADSIDE LLC</span>
         <span class="brand-tagline">Freight Logistics Partner</span>
       </div>
     </div>
