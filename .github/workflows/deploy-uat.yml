@@ -1,0 +1,57 @@
+name: Deploy UAT
+
+on:
+  push:
+    branches:
+      - uat
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lonestar-uat-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "${{ secrets.UAT_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          ssh-keyscan -t ed25519 77.68.28.42 > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy UAT
+        run: |
+          ssh deploy@77.68.28.42 <<'EOF'
+            set -euo pipefail
+
+            deploy_repo() {
+              REPO="$1"
+
+              cd "$REPO"
+
+              if [ -n "$(git status --porcelain)" ]; then
+                echo "ERROR: Working tree is dirty."
+                git status --short
+                exit 1
+              fi
+
+              git fetch origin uat
+              git checkout uat
+              git merge --ff-only origin/uat
+              git log -1 --oneline
+            }
+
+            deploy_repo /var/www/uat.lonestarroadsidetx.com/repo
+            deploy_repo /var/www/uat.lonestarroadsidetx.org/repo
+          EOF
