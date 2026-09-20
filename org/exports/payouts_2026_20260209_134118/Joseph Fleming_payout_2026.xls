@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<ss:Worksheet ss:Name="02-03 to 02-05">
+<ss:Table>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Date</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ticket #</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Driver</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Vendor</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Pay</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2026-02-03</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1806829</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Joseph Fleming</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">690.76</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2026-02-03</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1807700</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Joseph Fleming</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">607.92</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2026-02-03</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1808152</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Joseph Fleming</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">613.25</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2026-02-04</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1808886</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Joseph Fleming</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">612.77</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2026-02-04</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1809845</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Joseph Fleming</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">616.40</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2026-02-05</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1810610</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Joseph Fleming</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">509.27</ss:Data></ss:Cell></ss:Row>
+<ss:Row/><ss:Row/><ss:Row/>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Loads</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">6</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Gross</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">3650.37</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">TSS Trailer 7%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">255.53</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Broker Percentage 10%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">365.04</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Insurance</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Fuel</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Subtotal</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">3029.8</ss:Data></ss:Cell></ss:Row>
+</ss:Table></ss:Worksheet>
+</Workbook>

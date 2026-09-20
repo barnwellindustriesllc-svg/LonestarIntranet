@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<ss:Worksheet ss:Name="08-21 to 08-23">
+<ss:Table>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Date</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ticket #</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Driver</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Vendor</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Pay</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-08-21</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1624260</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">467.37</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-08-22</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1625016</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">541.11</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-08-23</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1625796</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">371.41</ss:Data></ss:Cell></ss:Row>
+<ss:Row/><ss:Row/><ss:Row/>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Loads</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">3</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Gross</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">1379.89</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">TSS Trailer 7%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">96.59</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Broker Percentage 10%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">137.99</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Insurance</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Fuel</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Subtotal</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">1145.31</ss:Data></ss:Cell></ss:Row>
+</ss:Table></ss:Worksheet>
+<ss:Worksheet ss:Name="08-24 to 08-30">
+<ss:Table>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Date</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ticket #</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Driver</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Vendor</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Pay</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-08-24</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1626476</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">503.53</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-08-24</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1626939</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">513.11</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-08-24</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1626226</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">505.88</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-08-29</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1630595</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">445.95</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-08-30</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1631985</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">478.58</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-08-30</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1631670</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">490.87</ss:Data></ss:Cell></ss:Row>
+<ss:Row/><ss:Row/><ss:Row/>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Loads</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">6</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Gross</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">2937.92</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">TSS Trailer 7%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">205.65</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Broker Percentage 10%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">293.79</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Insurance</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Fuel</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Subtotal</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">2438.48</ss:Data></ss:Cell></ss:Row>
+</ss:Table></ss:Worksheet>
+<ss:Worksheet ss:Name="09-01 to 09-01">
+<ss:Table>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Date</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ticket #</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Driver</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Vendor</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Pay</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-09-01</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1633643</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">474.93</ss:Data></ss:Cell></ss:Row>
+<ss:Row/><ss:Row/><ss:Row/>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Loads</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">1</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Gross</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">474.93</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">TSS Trailer 7%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">33.25</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Broker Percentage 10%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">47.49</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Insurance</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Fuel</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Subtotal</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">394.19</ss:Data></ss:Cell></ss:Row>
+</ss:Table></ss:Worksheet>
+<ss:Worksheet ss:Name="09-07 to 09-13">
+<ss:Table>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Date</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ticket #</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Driver</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Vendor</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Pay</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-09-07</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1638784</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">518.72</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-09-13</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1644386</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ivan Agular</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">494.31</ss:Data></ss:Cell></ss:Row>
+<ss:Row/><ss:Row/><ss:Row/>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Loads</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">2</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Gross</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">1013.03</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">TSS Trailer 7%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">70.91</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Broker Percentage 10%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">101.3</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Insurance</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Fuel</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Subtotal</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">840.82</ss:Data></ss:Cell></ss:Row>
+</ss:Table></ss:Worksheet>
+</Workbook>

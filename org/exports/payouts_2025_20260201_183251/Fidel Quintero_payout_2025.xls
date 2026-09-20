@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<ss:Worksheet ss:Name="01-30 to 02-01">
+<ss:Table>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Date</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ticket #</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Driver</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Vendor</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Pay</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-01-30</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1463966</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Fidel Quintero</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">360.85</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-01-30</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1464213</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Fidel Quintero</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">541.63</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-01-31</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1465747</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Fidel Quintero</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">460.79</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-02-01</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1466230</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Fidel Quintero</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">537.88</ss:Data></ss:Cell></ss:Row>
+<ss:Row/><ss:Row/><ss:Row/>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Loads</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">4</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Gross</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">1901.15</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">TSS Trailer 7%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">133.08</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Broker Percentage 10%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">190.12</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Insurance</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Fuel</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Subtotal</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">1577.95</ss:Data></ss:Cell></ss:Row>
+</ss:Table></ss:Worksheet>
+<ss:Worksheet ss:Name="02-02 to 02-02">
+<ss:Table>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Date</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ticket #</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Driver</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Vendor</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Pay</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-02-02</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1467141</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Fidel Quintero</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">557.85</ss:Data></ss:Cell></ss:Row>
+<ss:Row/><ss:Row/><ss:Row/>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Loads</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">1</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Gross</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">557.85</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">TSS Trailer 7%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">39.05</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Broker Percentage 10%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">55.79</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Insurance</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Fuel</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Subtotal</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">463.01</ss:Data></ss:Cell></ss:Row>
+</ss:Table></ss:Worksheet>
+</Workbook>

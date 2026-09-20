@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<ss:Worksheet ss:Name="01-29 to 02-01">
+<ss:Table>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Date</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ticket #</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Driver</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Vendor</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Pay</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-01-29</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1462758</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Yoaris Martinez torres</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">510.96</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-01-29</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1463060</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Yoaris Martinez torres</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">359.48</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-01-30</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1463965</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Yoaris Martinez torres</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">355.85</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-01-30</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1464323</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Yoaris Martinez torres</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">559.55</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-01-30</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1464097</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Yoaris Martinez torres</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">429.98</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-01-31</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1465251</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Yoaris Martinez torres</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">543.92</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-01-31</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1464632</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Yoaris Martinez torres</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">555.59</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-02-01</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1466284</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Yoaris Martinez torres</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">439.85</ss:Data></ss:Cell></ss:Row>
+<ss:Row/><ss:Row/><ss:Row/>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Loads</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">8</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Gross</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">3755.18</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">TSS Trailer 7%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">262.86</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Broker Percentage 10%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">375.52</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Insurance</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Fuel</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Subtotal</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">3116.8</ss:Data></ss:Cell></ss:Row>
+</ss:Table></ss:Worksheet>
+<ss:Worksheet ss:Name="02-02 to 02-02">
+<ss:Table>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Date</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Ticket #</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Driver</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Vendor</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Pay</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">2025-02-02</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">1467255</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Yoaris Martinez torres</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="String">Lone Star Roadside, LLC</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">551.43</ss:Data></ss:Cell></ss:Row>
+<ss:Row/><ss:Row/><ss:Row/>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Loads</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">1</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Total Gross</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">551.43</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">TSS Trailer 7%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">38.6</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Broker Percentage 10%</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">55.14</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Insurance</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Fuel</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">0</ss:Data></ss:Cell></ss:Row>
+<ss:Row><ss:Cell><ss:Data ss:Type="String">Subtotal</ss:Data></ss:Cell><ss:Cell><ss:Data ss:Type="Number">457.69</ss:Data></ss:Cell></ss:Row>
+</ss:Table></ss:Worksheet>
+</Workbook>

@@ -1,0 +1,32 @@
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Environment/secrets
+.env
+.env.*
+!.env.example
+
+# Logs/temp
+*.log
+*.tmp
+*.bak
+*~
+
+# Backups
+*_backup_*
+*.sql
+*.sql.gz
+
+# Local development
+.phpunit.result.cache
+
+# Sensitive legacy files
+org/includes/config_prod_orig.php
+org/dot/config.php
+org/seed_admin_web.php
+
+# Historical/backup PHP files
+org/*_062526

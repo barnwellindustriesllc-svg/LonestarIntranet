@@ -1,0 +1,7 @@
+<?php
+// Copy this file to config.php and set your API key.
+// You can get an API key at https://saferwebapi.com/ (Sign up), then add it below.
+define('SAFER_API_KEY', 'YOUR_API_KEY_HERE');
+
+// Optional: change cache TTL (in seconds). Set to 0 to disable file caching.
+define('CACHE_TTL', 900); // 15 minutes
