@@ -112,6 +112,9 @@ jobs:
             git -C "$ORG_REPO" checkout main
             git -C "$ORG_REPO" merge --ff-only origin/main
 
+            echo "Checking DOT configuration permissions..."
+            bash "$ORG_REPO/scripts/ensure-dot-config-permissions.sh"
+
             echo ".com running:"
             git -C "$COM_REPO" log -1 --oneline
 
