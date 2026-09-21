@@ -106,6 +106,8 @@ jobs:
 
             deploy_repo /var/www/uat.lonestarroadsidetx.com/repo
             deploy_repo /var/www/uat.lonestarroadsidetx.org/repo
+
+            bash /var/www/uat.lonestarroadsidetx.org/repo/scripts/ensure-dot-config-permissions.sh
           EOF
 
 
@@ -137,3 +139,6 @@ jobs:
 
           check_url "https://uat.lonestarroadsidetx.com"
           check_url "https://uat.lonestarroadsidetx.org"
+          check_url "https://uat.lonestarroadsidetx.org/driver_contacts"
+          check_url "https://uat.lonestarroadsidetx.org/driver_weekly_loads"
+          check_url "https://uat.lonestarroadsidetx.org/dot/img/logo.png"
