@@ -1,6 +1,7 @@
 <?php
 // ls_title.php
 // Include this header file at the top of every page via `include 'includes/ls_title.php';`
+require_once __DIR__ . '/includes/paths.php';
 if (session_status() === PHP_SESSION_NONE) {
   session_start();
 }
@@ -16,7 +17,7 @@ $envLabel = defined('LONESTAR_ENV_LABEL') ? LONESTAR_ENV_LABEL : '';
     <?php endif; ?>
     <div class="brand">
       <div class="brand-mark">
-        <img src="img/logo.png" alt="Lonestar Roadside LLC Logo" />
+        <img src="<?= htmlspecialchars(lonestar_base_path() . '/dot/img/logo.png', ENT_QUOTES, 'UTF-8') ?>" alt="Lonestar Roadside LLC Logo" />
       </div>
       <div class="brand-text">
         <span class="brand-name">LONESTAR ROADSIDE LLC</span>

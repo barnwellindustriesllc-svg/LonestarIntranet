@@ -1,0 +1,164 @@
+name: Deploy UAT
+
+on:
+  push:
+    branches:
+      - uat
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lonestar-uat-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate PHP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Lint PHP files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          find com org \
+            -type f \
+            -name "*.php" \
+            -print0 \
+          | while IFS= read -r -d '' file; do
+              echo "Checking $file"
+              php -l "$file"
+            done
+
+  deploy:
+    name: Deploy Lone Star UAT
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        env:
+          UAT_SSH_PRIVATE_KEY: ${{ secrets.UAT_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$UAT_SSH_PRIVATE_KEY" ]; then
+            echo '::error::UAT_SSH_PRIVATE_KEY is missing or empty.'
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$UAT_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          for attempt in 1 2 3; do
+            echo "Scanning VPS SSH host key (attempt $attempt of 3)..."
+            if ssh-keyscan -T 15 -t ed25519 77.68.28.42 > /tmp/lonestar_known_hosts && [ -s /tmp/lonestar_known_hosts ]; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo '::error::Unable to obtain the VPS ED25519 host key on port 22. Check VPS availability, firewall rules, and SSH access from GitHub runners.'
+              exit 1
+            fi
+            sleep 5
+          done
+
+          cut -d' ' -f2- /tmp/lonestar_known_hosts > /tmp/lonestar_host_key.pub
+
+          if ! ACTUAL_FINGERPRINT="$(ssh-keygen -lf /tmp/lonestar_host_key.pub -E sha256 | awk '{print $2}')"; then
+            echo '::error::The scanned VPS host key could not be parsed.'
+            exit 1
+          fi
+          EXPECTED_FINGERPRINT="SHA256:b2p8BiimcfXyXCdiKbgy9QBQsrs072rERV3eRpfXZjc"
+
+          echo "Expected: $EXPECTED_FINGERPRINT"
+          echo "Actual:   $ACTUAL_FINGERPRINT"
+
+          if [ "$ACTUAL_FINGERPRINT" != "$EXPECTED_FINGERPRINT" ]; then
+            echo "VPS SSH host fingerprint does not match."
+            exit 1
+          fi
+
+          cat /tmp/lonestar_known_hosts >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy UAT
+        shell: bash
+        run: |
+          ssh deploy@77.68.28.42 <<'EOF'
+            set -euo pipefail
+
+            deploy_repo() {
+              REPO="$1"
+
+              echo "Deploying $REPO"
+              cd "$REPO"
+
+              if [ -n "$(git status --porcelain)" ]; then
+                echo "ERROR: Working tree is dirty. Deployment stopped."
+                git status --short
+                exit 1
+              fi
+
+              git fetch origin uat
+              git checkout uat
+              git merge --ff-only origin/uat
+
+              echo "Now running commit:"
+              git log -1 --oneline
+            }
+
+            deploy_repo /var/www/uat.lonestarroadsidetx.com/repo
+            deploy_repo /var/www/uat.lonestarroadsidetx.org/repo
+
+            bash /var/www/uat.lonestarroadsidetx.org/repo/scripts/ensure-dot-config-permissions.sh
+          EOF
+
+
+      - name: Verify UAT sites
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          check_url() {
+            URL="$1"
+            echo "Checking $URL"
+
+            STATUS="$(curl \
+              --silent \
+              --show-error \
+              --location \
+              --output /dev/null \
+              --write-out "%{http_code}" \
+              --max-time 20 \
+              "$URL")"
+
+            echo "$URL returned HTTP $STATUS"
+
+            if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 400 ]; then
+              echo "Health check failed for $URL"
+              exit 1
+            fi
+          }
+
+          check_url "https://uat.lonestarroadsidetx.com"
+          check_url "https://uat.lonestarroadsidetx.org"
+          check_url "https://uat.lonestarroadsidetx.org/driver_contacts"
+          check_url "https://uat.lonestarroadsidetx.org/driver_weekly_loads"
+          check_url "https://uat.lonestarroadsidetx.org/dot/img/logo.png"
