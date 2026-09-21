@@ -1,0 +1,149 @@
+name: Deploy PROD
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lonestar-prod-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate PHP
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Lint PHP files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          find com org \
+            -type f \
+            -name "*.php" \
+            -print0 \
+          | while IFS= read -r -d '' file; do
+              echo "Checking $file"
+              php -l "$file"
+            done
+
+  deploy:
+    name: Deploy Lone Star PROD
+    runs-on: ubuntu-24.04
+    needs: validate
+
+    environment:
+      name: production
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "${{ secrets.PROD_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          ssh-keyscan -t ed25519 77.68.28.42 > /tmp/lonestar_known_hosts
+
+          cut -d' ' -f2- /tmp/lonestar_known_hosts > /tmp/lonestar_host_key.pub
+
+          ACTUAL_FINGERPRINT="$(ssh-keygen -lf /tmp/lonestar_host_key.pub -E sha256 | awk '{print $2}')"
+          EXPECTED_FINGERPRINT="SHA256:b2p8BiimcfXyXCdiKbgy9QBQsrs072rERV3eRpfXZjc"
+
+          echo "Expected: $EXPECTED_FINGERPRINT"
+          echo "Actual:   $ACTUAL_FINGERPRINT"
+
+          if [ "$ACTUAL_FINGERPRINT" != "$EXPECTED_FINGERPRINT" ]; then
+            echo "VPS SSH host fingerprint does not match."
+            exit 1
+          fi
+
+          cat /tmp/lonestar_known_hosts >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy PROD
+        shell: bash
+        run: |
+          ssh deploy@77.68.28.42 <<'EOF'
+            set -euo pipefail
+
+            COM_REPO="/var/www/lonestarroadsidetx.com/repo"
+            ORG_REPO="/var/www/lonestarroadsidetx.org/repo"
+
+            echo "Checking PROD working trees..."
+
+            for REPO in "$COM_REPO" "$ORG_REPO"; do
+              if [ -n "$(git -C "$REPO" status --porcelain)" ]; then
+                echo "ERROR: Working tree is dirty: $REPO"
+                git -C "$REPO" status --short
+                exit 1
+              fi
+            done
+
+            echo "Fetching main..."
+            git -C "$COM_REPO" fetch origin main
+            git -C "$ORG_REPO" fetch origin main
+
+            echo "Deploying .com..."
+            git -C "$COM_REPO" checkout main
+            git -C "$COM_REPO" merge --ff-only origin/main
+
+            echo "Deploying .org..."
+            git -C "$ORG_REPO" checkout main
+            git -C "$ORG_REPO" merge --ff-only origin/main
+
+            echo ".com running:"
+            git -C "$COM_REPO" log -1 --oneline
+
+            echo ".org running:"
+            git -C "$ORG_REPO" log -1 --oneline
+          EOF
+
+      - name: Verify PROD sites
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          check_url() {
+            URL="$1"
+            echo "Checking $URL"
+
+            STATUS="$(curl \
+              --silent \
+              --show-error \
+              --location \
+              --output /dev/null \
+              --write-out "%{http_code}" \
+              --max-time 20 \
+              "$URL")"
+
+            echo "$URL returned HTTP $STATUS"
+
+            if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 400 ]; then
+              echo "Health check failed for $URL"
+              exit 1
+            fi
+          }
+
+          check_url "https://lonestarroadsidetx.com"
+          check_url "https://lonestarroadsidetx.org"
