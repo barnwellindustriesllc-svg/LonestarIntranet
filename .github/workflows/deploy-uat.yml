@@ -51,20 +51,40 @@ jobs:
     steps:
       - name: Configure SSH
         shell: bash
+        env:
+          UAT_SSH_PRIVATE_KEY: ${{ secrets.UAT_SSH_PRIVATE_KEY }}
         run: |
           set -euo pipefail
+
+          if [ -z "$UAT_SSH_PRIVATE_KEY" ]; then
+            echo '::error::UAT_SSH_PRIVATE_KEY is missing or empty.'
+            exit 1
+          fi
 
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          printf '%s\n' "${{ secrets.UAT_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "$UAT_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
-          ssh-keyscan -t ed25519 77.68.28.42 > /tmp/lonestar_known_hosts
+          for attempt in 1 2 3; do
+            echo "Scanning VPS SSH host key (attempt $attempt of 3)..."
+            if ssh-keyscan -T 15 -t ed25519 77.68.28.42 > /tmp/lonestar_known_hosts && [ -s /tmp/lonestar_known_hosts ]; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo '::error::Unable to obtain the VPS ED25519 host key on port 22. Check VPS availability, firewall rules, and SSH access from GitHub runners.'
+              exit 1
+            fi
+            sleep 5
+          done
 
           cut -d' ' -f2- /tmp/lonestar_known_hosts > /tmp/lonestar_host_key.pub
 
-          ACTUAL_FINGERPRINT="$(ssh-keygen -lf /tmp/lonestar_host_key.pub -E sha256 | awk '{print $2}')"
+          if ! ACTUAL_FINGERPRINT="$(ssh-keygen -lf /tmp/lonestar_host_key.pub -E sha256 | awk '{print $2}')"; then
+            echo '::error::The scanned VPS host key could not be parsed.'
+            exit 1
+          fi
           EXPECTED_FINGERPRINT="SHA256:b2p8BiimcfXyXCdiKbgy9QBQsrs072rERV3eRpfXZjc"
 
           echo "Expected: $EXPECTED_FINGERPRINT"
