@@ -13,6 +13,7 @@ require __DIR__ . '/includes/config.php';
 require __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/payout_net_helpers.php';
 require_once __DIR__ . '/includes/audit.php';
+require_once __DIR__ . '/includes/rtex_load_helpers.php';
 
 use Shuchkin\SimpleXLSX;
 
@@ -1184,7 +1185,7 @@ function ensure_tss_misc_adjustments_table(mysqli $mysqli): void {
 function get_driver_dropdown_options(mysqli $mysqli): array {
   $drivers = [];
   $q = $mysqli->query("
-    SELECT id, CONCAT(first_name, ' ', last_name) AS name
+    SELECT id, CONCAT(first_name, ' ', last_name) AS name, truck_no
       FROM driver_contacts
      WHERE COALESCE(is_disabled,0) = 0
      ORDER BY last_name, first_name
@@ -1438,7 +1439,7 @@ function get_driver_bonus_reconciliation_rows(mysqli $mysqli, string $weekStart)
   $placeholders = implode(',', array_fill(0, count($driverIds), '?'));
   $types = str_repeat('i', count($driverIds));
   $sqlDrivers = "
-    SELECT id, CONCAT(first_name, ' ', last_name) AS name
+    SELECT id, CONCAT(first_name, ' ', last_name) AS name, truck_no
       FROM driver_contacts
      WHERE id IN ($placeholders)
   ";
@@ -1795,6 +1796,7 @@ ensure_driver_payouts_split_index($mysqli);
 ensure_ls_unresolved_use_role_index($mysqli);
 ensure_tss_misc_adjustments_table($mysqli);
 ensure_rtex_payout_rows_table($mysqli);
+ensure_rtex_load_schema($mysqli);
 ensure_nextier_payout_rows_table($mysqli);
 ensure_nextier_trailer_reconciliation_table($mysqli);
 ensure_nickelrock_payout_rows_table($mysqli);
@@ -2532,6 +2534,8 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['action'] ?? '') === 'sa
   }
 }
 
+require __DIR__ . '/includes/rtex_load_actions.php';
+
 if (($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['action'] ?? '') === 'delete_nickelrock_job_rate')) {
   $lastUploadType = 'nickelrock_review';
   $jobRateId = (int)($_POST['job_rate_id'] ?? 0);
@@ -2856,7 +2860,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['action'] ?? '') === 'ex
   if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $weekStartExport)) {
     $weekStartExport = business_sunday_week_start(tss_today());
   }
-  $exportRows = get_rtex_review_rows($mysqli, $weekStartExport);
+  $exportRows = array_values(array_filter(get_rtex_review_rows($mysqli, $weekStartExport), static fn($row) => ($row['billing_mode'] ?? 'hourly') === 'hourly'));
   if (!$exportRows) {
     $errors[] = 'No RTEX rows were found for that week.';
   } else {
@@ -3150,7 +3154,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['action'] ?? '') === 'sa
 
   if (empty($errors)) {
     $old = null;
-    $stmtOld = $mysqli->prepare("SELECT * FROM rtex_payout_rows WHERE id = ? LIMIT 1");
+    $stmtOld = $mysqli->prepare("SELECT * FROM rtex_payout_rows WHERE id = ? AND billing_mode='hourly' LIMIT 1");
     if ($stmtOld) {
       $stmtOld->bind_param('i', $rowId);
       $stmtOld->execute();
@@ -3263,7 +3267,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['action'] ?? '') === 'de
     $errors[] = 'Unable to locate the RTEX row to delete.';
   } else {
     $old = null;
-    $stmtOld = $mysqli->prepare("SELECT * FROM rtex_payout_rows WHERE id = ? LIMIT 1");
+    $stmtOld = $mysqli->prepare("SELECT * FROM rtex_payout_rows WHERE id = ? AND billing_mode='hourly' LIMIT 1");
     if ($stmtOld) {
       $stmtOld->bind_param('i', $rowId);
       $stmtOld->execute();
@@ -3326,7 +3330,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['action'] ?? '') === 'de
     $deleted = 0;
     foreach ($rowIds as $rowId) {
       $old = null;
-      $stmtOld = $mysqli->prepare("SELECT * FROM rtex_payout_rows WHERE id = ? LIMIT 1");
+      $stmtOld = $mysqli->prepare("SELECT * FROM rtex_payout_rows WHERE id = ? AND billing_mode='hourly' LIMIT 1");
       if ($stmtOld) {
         $stmtOld->bind_param('i', $rowId);
         $stmtOld->execute();
@@ -4001,6 +4005,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['action'])) {
             $ticketNumber = $iTicket !== null ? $cellText($row[$iTicket] ?? '') : '';
             if ($ticketNumber === '') {
               $ticketNumber = 'RTEX-' . ($jobNumber !== '' ? $jobNumber : 'JOB') . '-' . ($truckDigits !== '' ? $truckDigits : 'TRUCK') . '-' . str_replace('-', '', $workDate) . '-' . ($sheetIndex + 1) . '-' . ($rowIndex + 1);
+            }
+            $loadCheck = rtex_stmt($mysqli, "SELECT id FROM rtex_payout_rows WHERE billing_mode='load' AND work_date=? AND ticket_number=? LIMIT 1", 'ss', [$workDate, $ticketNumber]);
+            $loadConflict = $loadCheck->get_result()->fetch_assoc();
+            $loadCheck->close();
+            if ($loadConflict) {
+              $errors[] = 'RTEX ticket ' . $ticketNumber . ' on ' . $workDate . ' is already saved as a load; the hourly import skipped it.';
+              continue;
             }
             $startTime = $iStart !== null ? rtex_excel_time($row[$iStart] ?? '') : '';
             $endTime = $iEnd !== null ? rtex_excel_time($row[$iEnd] ?? '') : '';
@@ -4702,7 +4713,7 @@ $selectedUploadVendor = in_array(($_GET['vendor'] ?? ''), ['tss', 'nextier', 'rt
 if (in_array($lastUploadType, ['nextier_payout', 'nextier_review', 'nextier_misc_adjustment'], true)) {
   $selectedUploadVendor = 'nextier';
 }
-if (in_array($lastUploadType, ['rtex_payout', 'rtex_review'], true)) {
+if (in_array($lastUploadType, ['rtex_payout', 'rtex_review', 'rtex_misc_adjustment'], true)) {
   $selectedUploadVendor = 'rtex';
 }
 if (in_array($lastUploadType, ['nickelrock_review', 'nickelrock_misc_adjustment'], true)) {
@@ -4736,7 +4747,9 @@ if ($lastUploadType === 'rtex_payout' && is_array($rtexPayoutSummary) && !empty(
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $rtexReviewWeekStart)) {
   $rtexReviewWeekStart = $rtexWeekOptions[0] ?? business_sunday_week_start($todayDate);
 }
-$rtexReviewRows = get_rtex_review_rows($mysqli, $rtexReviewWeekStart);
+$rtexReviewRows = array_values(array_filter(get_rtex_review_rows($mysqli, $rtexReviewWeekStart), static fn($row) => ($row['billing_mode'] ?? 'hourly') === $rtexMode));
+$rtexJobRates = rtex_job_rates($mysqli);
+$rtexFscSettings = rtex_fsc_settings($mysqli,$rtexReviewWeekStart);
 $nextierReviewWeekStart = trim((string)($_POST['nextier_week_start'] ?? ($_GET['nextier_week_start'] ?? '')));
 if ($lastUploadType === 'nextier_payout' && is_array($nextierPayoutSummary) && !empty($nextierPayoutSummary['last_week_start'])) {
   $nextierReviewWeekStart = (string)$nextierPayoutSummary['last_week_start'];
@@ -4754,14 +4767,20 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $nickelrockReviewWeekStart)) {
 $nickelrockJobRates = get_nickelrock_job_rates($mysqli);
 $nickelrockReviewRows = get_nickelrock_review_rows($mysqli, $nickelrockReviewWeekStart);
 
-function render_vendor_broker_fee_form(array $settings): void {
+function render_vendor_broker_fee_form(array $settings, ?array $rtexFsc = null, string $rtexWeek = ''): void {
+  $withFsc = $rtexFsc !== null && ($settings['vendor_scope'] ?? '') === 'rtex';
   $scope = (string)($settings['vendor_scope'] ?? 'tss');
   $label = (string)($settings['label'] ?? strtoupper($scope));
   $mode = (string)($settings['fee_mode'] ?? 'percentage');
   $value = number_format((float)($settings['fee_value'] ?? 0), 2, '.', '');
   ?>
   <form method="post" class="vendor-broker-settings mb-4">
-    <input type="hidden" name="action" value="save_vendor_broker_fee">
+    <input type="hidden" name="action" value="<?= $withFsc ? 'save_rtex_load_settings' : 'save_vendor_broker_fee' ?>">
+    <?php if ($withFsc): ?>
+      <input type="hidden" name="rtex_mode" value="load">
+      <input type="hidden" name="rtex_week_start" value="<?= h($rtexWeek) ?>">
+      <input type="hidden" name="rtex_csrf" value="<?= h($_SESSION['rtex_csrf']) ?>">
+    <?php endif; ?>
     <input type="hidden" name="vendor_scope" value="<?= h($scope) ?>">
     <div class="row g-3 align-items-end">
       <div class="col-12 col-lg">
@@ -4778,9 +4797,22 @@ function render_vendor_broker_fee_form(array $settings): void {
         <label class="form-label">Broker Fee</label>
         <input type="number" name="fee_value" value="<?= h($value) ?>" class="form-control" min="0" step="0.01">
       </div>
-      <div class="col-auto">
-        <button type="submit" class="btn btn-outline-primary">Save Fee</button>
+      <?php if ($withFsc): ?>
+      <div class="col-12 col-md-3 col-lg-2">
+        <label for="rtexDriverFscRate" class="form-label">Driver FSC Rate (%)</label>
+        <input id="rtexDriverFscRate" type="number" name="driver_fsc_rate" value="<?= h(number_format((float)$rtexFsc['driver_fsc_rate'],2,'.','')) ?>" class="form-control" min="0" max="100" step="0.01" required>
       </div>
+      <div class="col-12 col-md-3 col-lg-2">
+        <label for="rtexInvoiceFscRate" class="form-label">RTEX Invoice FSC Rate (%)</label>
+        <input id="rtexInvoiceFscRate" type="number" name="invoice_fsc_rate" value="<?= h(number_format((float)$rtexFsc['invoice_fsc_rate'],2,'.','')) ?>" class="form-control" min="0" max="100" step="0.01" required>
+      </div>
+      <?php endif; ?>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-outline-primary"><?= $withFsc ? 'Save Settings' : 'Save Fee' ?></button>
+      </div>
+      <?php if ($withFsc): ?>
+      <div class="col-12 small text-muted">FSC rates apply to load-based work for <?= h($rtexWeek) ?> through <?= h(business_week_end($rtexWeek)) ?>. Driver FSC is paid separately without broker fees. Invoice FSC appears only in the RTEX invoice export. Each new week starts at 0%.</div>
+      <?php endif; ?>
     </div>
   </form>
   <?php
@@ -6068,12 +6100,28 @@ function render_vendor_broker_fee_form(array $settings): void {
       <?php endif; ?>
     </div>
 
-    <div class="mt-3 vendor-form d-none" data-vendor="rtex" id="rtex-section">
+    <div class="mt-3 vendor-form d-none" data-vendor="rtex" id="rtex-section" data-mode="<?= h($rtexMode) ?>">
       <div class="d-flex align-items-center justify-content-between">
-        <h2 class="mb-0">Upload RTEX Invoice File</h2>
-        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#rtexEntryModal">Add RTEX Row</button>
+        <h2 class="mb-0">RTEX Payout Calculator</h2>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="<?= $rtexMode === 'load' ? '#rtexLoadEntryModal' : '#rtexEntryModal' ?>">Add RTEX Row</button>
       </div><br />
-      <?php render_vendor_broker_fee_form($vendorBrokerFeeSettings['rtex']); ?>
+      <form method="get" class="my-3 d-flex gap-2 align-items-end">
+        <input type="hidden" name="vendor" value="rtex">
+        <input type="hidden" name="rtex_week_start" value="<?= h($rtexReviewWeekStart) ?>">
+        <div><label for="rtexMode" class="form-label">Invoicing Method</label>
+          <select id="rtexMode" name="rtex_mode" class="form-select">
+            <option value="hourly" <?= $rtexMode === 'hourly' ? 'selected' : '' ?>>Hourly</option>
+            <option value="load" <?= $rtexMode === 'load' ? 'selected' : '' ?>>Load-based (tonnage or mileage)</option>
+          </select>
+        </div>
+        <button class="btn btn-outline-primary">Switch Invoicing</button>
+      </form>
+      <p class="small text-muted">Hourly and load-based work can coexist in the same week. This view controls entry, review, and invoice exports.</p>
+      <?php render_vendor_broker_fee_form($vendorBrokerFeeSettings['rtex'], $rtexMode === 'load' ? $rtexFscSettings : null, $rtexReviewWeekStart); ?>
+      <?php if ($rtexMode === 'load'): ?>
+        <p class="small text-muted">The hourly brokerage fee applies only to hourly rows. Load pay uses the selected job rate; a percentage brokerage setting, if selected above, applies to base freight only, excluding driver FSC.</p>
+        <?php require __DIR__ . '/includes/rtex_load_form.php'; ?>
+      <?php else: ?>
       <form method="post" enctype="multipart/form-data">
         <input type="hidden" name="upload_mode" value="rtex_payout">
         <div class="row g-3 align-items-end">
@@ -6172,6 +6220,8 @@ function render_vendor_broker_fee_form(array $settings): void {
         </div>
       </div>
 
+      <?php endif; ?>
+
       <hr class="my-4">
       <div class="d-flex align-items-center justify-content-between">
         <h2 class="mb-0">Miscellaneous Payment Adjustments</h2>
@@ -6224,7 +6274,7 @@ function render_vendor_broker_fee_form(array $settings): void {
 
       <hr class="my-4">
       <div class="d-flex align-items-center justify-content-between">
-        <h2 class="mb-0">RTEX Weekly Review</h2>
+        <h2 class="mb-0">RTEX Weekly Review — <?= $rtexMode === 'load' ? 'Load-based' : 'Hourly' ?></h2>
       </div><br />
       <form method="get" class="mb-3">
         <input type="hidden" name="vendor" value="rtex">
@@ -6245,7 +6295,9 @@ function render_vendor_broker_fee_form(array $settings): void {
         </div>
       </form>
 
-      <?php if (empty($rtexReviewRows)): ?>
+      <?php if ($rtexMode === 'load'): ?>
+        <?php require __DIR__ . '/includes/rtex_load_review.php'; ?>
+      <?php elseif (empty($rtexReviewRows)): ?>
         <div class="alert alert-info">No RTEX rows were found for this week.</div>
       <?php else: ?>
         <div class="d-flex flex-wrap gap-2 mb-2">
@@ -6581,6 +6633,7 @@ function render_vendor_broker_fee_form(array $settings): void {
     </div>
   </div>
 
+  <script src="includes/rtex_load_ui.js?v=<?= filemtime(__DIR__ . '/includes/rtex_load_ui.js') ?>"></script>
   <script>
     const todayDate = <?= json_encode($todayDate) ?>;
     const hasLsDetailForToday = <?= $hasLsDetailForToday ? 'true' : 'false' ?>;

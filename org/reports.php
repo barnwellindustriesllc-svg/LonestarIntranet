@@ -5,6 +5,8 @@ ini_set('display_startup_errors',1);
 error_reporting(E_ALL);
 require __DIR__ . '/includes/auth.php';
 require __DIR__ . '/includes/config.php'; // $mysqli
+require_once __DIR__ . '/includes/paths.php';
+require_once __DIR__ . '/includes/rtex_fsc.php';
 require __DIR__ . '/includes/payout_net_helpers.php';
 $showDisabled = isset($_REQUEST['show_disabled']) && $_REQUEST['show_disabled'] === '1';
 const BUSINESS_SOURCE_TIMEZONE = 'America/Chicago';
@@ -21,6 +23,15 @@ function table_exists(mysqli $db, $table){
     $table = $db->real_escape_string($table);
     $res = $db->query("SHOW TABLES LIKE '{$table}'");
     return $res && $res->num_rows > 0;
+}
+
+function report_driver_payout_has_column(mysqli $db, string $column): bool {
+    static $cache = [];
+    $key = spl_object_id($db) . ':' . $column;
+    if (!array_key_exists($key, $cache)) {
+        $cache[$key] = table_has_column($db, 'driver_payouts', $column);
+    }
+    return $cache[$key];
 }
 
 function payout_vendor_scope_options(): array {
@@ -631,7 +642,7 @@ function driver_week_misc_adjustments(mysqli $mysqli, int $driverId, string $wee
             }
             $amount = (float)($r['amount'] ?? 0);
             $signedAmount = ($type === 'misc_deduction') ? -1 * abs($amount) : abs($amount);
-            $label = $type === 'misc_deduction' ? 'Misc Deduction' : 'Misc Payment';
+            $label = $type === 'write_off' ? 'Write-off' : ($type === 'misc_deduction' ? 'Misc Deduction' : 'Misc Payment');
             $rows[] = [
                 'label' => $label,
                 'comments' => (string)($r['comments'] ?? ''),
@@ -646,7 +657,7 @@ function driver_week_misc_adjustments(mysqli $mysqli, int $driverId, string $wee
             }
             $signedAmount = ((string)$type === 'misc_deduction') ? -1 * abs((float)$amount) : abs((float)$amount);
             $rows[] = [
-                'label' => ((string)$type === 'misc_deduction') ? 'Misc Deduction' : 'Misc Payment',
+                'label' => ((string)$type === 'write_off') ? 'Write-off' : (((string)$type === 'misc_deduction') ? 'Misc Deduction' : 'Misc Payment'),
                 'comments' => (string)$comments,
                 'amount' => $signedAmount,
             ];
@@ -1096,8 +1107,11 @@ function rtex_payout_row_meta(mysqli $mysqli, $ticketNumber, $payoutDate): array
         return $cache[$key];
     }
 
+    $loadColumns = table_has_column($mysqli, 'rtex_payout_rows', 'billing_mode')
+        ? 'billing_mode, rate_basis, tons, miles'
+        : "'hourly', 'tonnage', 0, 0";
     $stmt = $mysqli->prepare(
-        "SELECT rate, hours
+        "SELECT rate, hours, {$loadColumns}
            FROM rtex_payout_rows
           WHERE ticket_number = ?
             AND work_date = ?
@@ -1110,7 +1124,7 @@ function rtex_payout_row_meta(mysqli $mysqli, $ticketNumber, $payoutDate): array
     }
     $stmt->bind_param('ss', $ticket, $date);
     $stmt->execute();
-    $stmt->bind_result($rate, $hours);
+    $stmt->bind_result($rate, $hours, $billingMode, $rateBasis, $tons, $miles);
     if ($stmt->fetch()) {
         $rateRaw = (float)$rate;
         $hoursRaw = (float)$hours;
@@ -1119,6 +1133,10 @@ function rtex_payout_row_meta(mysqli $mysqli, $ticketNumber, $payoutDate): array
             'hours' => rtrim(rtrim(number_format($hoursRaw, 2, '.', ''), '0'), '.'),
             'rate_raw' => $rateRaw,
             'hours_raw' => $hoursRaw,
+            'billing_mode' => (string)$billingMode,
+            'rate_basis' => (string)$rateBasis,
+            'tons' => (float)$tons,
+            'miles' => (float)$miles,
         ];
     }
     $stmt->close();
@@ -1126,14 +1144,36 @@ function rtex_payout_row_meta(mysqli $mysqli, $ticketNumber, $payoutDate): array
     return $default;
 }
 
+
+function rtex_append_fsc_statement_rows(array &$rows, array $details, ?array &$tableRows = null): void {
+    foreach ($details['lines'] as $line) {
+        $pay = money_format_display($line['amount']);
+        $rows[] = [$line['date'],$line['ticket'],$line['label'],'','',$pay];
+        if ($tableRows !== null) $tableRows[] = [
+            'date'=>$line['date'],'ticket'=>$line['ticket'],'vendor'=>$line['label'],
+            'base_rate'=>'','hours'=>'','pay'=>$pay,
+        ];
+    }
+}
+
 function rtex_driver_report_values(array $rtexMeta, $grossPay): array {
+    if (($rtexMeta['billing_mode'] ?? 'hourly') === 'load') {
+        $perMile = ($rtexMeta['rate_basis'] ?? 'tonnage') === 'mileage';
+        $quantity = (float)($rtexMeta[$perMile ? 'miles' : 'tons'] ?? 0);
+        return [
+            'rate' => money_format_display((float)($rtexMeta['rate_raw'] ?? 0)) . ($perMile ? '/mi' : '/ton'),
+            'hours' => rtrim(rtrim(number_format($quantity, 2, '.', ''), '0'), '.') . ($perMile ? ' mi' : ' tons'),
+            'pay' => round((float)$grossPay, 2),
+            'pay_display' => money_format_display((float)$grossPay),
+        ];
+    }
     $hours = (float)($rtexMeta['hours_raw'] ?? 0);
     $rate = (float)($rtexMeta['rate_raw'] ?? 0);
     $adjustedRate = $rate > 0 ? max(0, $rate - 10.0) : 0.0;
     $adjustedPay = round((float)$grossPay - ($hours * 10.0), 2);
     return [
         'rate' => $adjustedRate > 0 ? money_format_display($adjustedRate) : '',
-        'hours' => rtrim(rtrim(number_format($hours, 2, '.', ''), '0'), '.'),
+        'hours' => rtrim(rtrim(number_format($hours, 2, '.', ''), '0'), '.') . ' hrs',
         'pay' => $adjustedPay,
         'pay_display' => money_format_display($adjustedPay),
     ];
@@ -1770,8 +1810,8 @@ function build_payout_workbook(mysqli $mysqli, int $driverId, int $year, string 
     }
 
     // Do we have driver_id in driver_payouts?
-    $hasDriverId = table_has_column($mysqli, 'driver_payouts', 'driver_id');
-    $hasDriverContactId = table_has_column($mysqli, 'driver_payouts', 'driver_contact_id');
+    $hasDriverId = report_driver_payout_has_column($mysqli, 'driver_id');
+    $hasDriverContactId = report_driver_payout_has_column($mysqli, 'driver_contact_id');
 
     // Weeks for the year
     if ($hasDriverId && $hasDriverContactId) {
@@ -1925,7 +1965,7 @@ function build_payout_workbook(mysqli $mysqli, int $driverId, int $year, string 
 
         // Headers
         $headers = ($vendorScope === 'rtex')
-            ? ['Date','Ticket #','Client','Base Rate','Hours','Pay']
+            ? ['Date','Ticket #','Client','Base Rate','Quantity','Pay']
             : ['Date','Ticket #','BOL #','Client','Base Rate','Net Weight (Tons)','Mileage','Pay'];
         $rows = [];
         $rows[] = ['Driver Name', $driverMeta['driver_name']];
@@ -2011,7 +2051,8 @@ function build_payout_workbook(mysqli $mysqli, int $driverId, int $year, string 
                 if ($vendorScope === 'rtex') $row['tss_pay'] = $rtexValues['pay'];
                 if ($vendorScope === 'nextier') $row['tss_pay'] = nextier_report_row_pay($nextierMeta, $row['tss_pay'] ?? 0);
                 $row['nextier_fsc'] = (float)($nextierMeta['fsc_total'] ?? 0);
-                $dataRows[] = $row;
+                $row['nextier_bonus'] = (float)($nextierMeta['bonus'] ?? 0);
+            $dataRows[] = $row;
                 if (!empty($extras['detail_match'])) $totalLoadsFromDetail++;
                 $rows[] = ($vendorScope === 'rtex')
                     ? [
@@ -2047,7 +2088,7 @@ function build_payout_workbook(mysqli $mysqli, int $driverId, int $year, string 
                 if ($vendorScope === 'nickelrock') $extras = nickelrock_report_extras(nickelrock_payout_row_meta($mysqli, $ticket_number, $payout_date));
                 $trailerMeta = ($vendorScope === 'rtex') ? ['fee_amount' => 0.0] : payout_row_trailer_meta($mysqli, $driverId, $extras, $tss_pay, $vendor_name, (string)$payout_date);
                 $rowPay = ($vendorScope === 'rtex') ? $rtexValues['pay'] : (($vendorScope === 'nextier') ? nextier_report_row_pay($nextierMeta, $tss_pay) : $tss_pay);
-                $dataRows[] = compact('payout_date','ticket_number','driver_name','vendor_name') + ['tss_pay' => $rowPay, 'trailer_fee' => $trailerMeta['fee_amount'], 'nextier_fsc' => (float)($nextierMeta['fsc_total'] ?? 0)];
+                $dataRows[] = compact('payout_date','ticket_number','driver_name','vendor_name') + ['tss_pay' => $rowPay, 'trailer_fee' => $trailerMeta['fee_amount'], 'nextier_bonus' => (float)($nextierMeta['bonus'] ?? 0), 'nextier_fsc' => (float)($nextierMeta['fsc_total'] ?? 0)];
                 if (!empty($extras['detail_match'])) $totalLoadsFromDetail++;
                 $rows[] = ($vendorScope === 'rtex')
                     ? [
@@ -2079,13 +2120,15 @@ function build_payout_workbook(mysqli $mysqli, int $driverId, int $year, string 
         // Summary calculations
         $totalLoads = $totalLoadsFromDetail;
         $totalGross = array_sum(array_map(fn($r)=> (float)$r['tss_pay'], $dataRows));
+    $rtexFscDetails = $vendorScope === 'rtex' ? rtex_driver_statement_fsc($mysqli,$dataRows) : ['total'=>0.0,'load_gross'=>0.0,'broker_fee'=>0.0,'lines'=>[]];
+
         $nextierFuelSurchargeTotal = ($vendorScope === 'nextier')
             ? round(array_sum(array_map(fn($r)=> (float)($r['nextier_fsc'] ?? 0), $dataRows)), 2)
             : 0.0;
         $tss7 = ($vendorScope === 'nextier')
             ? trailer_fee_total_for_driver($mysqli, $driverId, (float)$totalGross, $startDate, $endDate, $vendorScope)
             : round(array_sum(array_map(fn($r)=> (float)($r['trailer_fee'] ?? 0), $dataRows)), 2);
-        $netBreakdown = lonestar_driver_week_net_breakdown($mysqli, $driverId, (float)$totalGross, (float)$tss7, $startDate, $endDate, $vendorScope);
+        $netBreakdown = lonestar_driver_week_net_breakdown($mysqli, $driverId, (float)$totalGross, (float)$tss7, $startDate, $endDate, $vendorScope, array_sum(array_column($dataRows, 'nextier_bonus')));
         $payoutPct = (float)$netBreakdown['payout_pct'];
         $brokerPct = (float)($netBreakdown['broker_pct'] ?? $payoutPct);
         $brokerAmt = (float)$netBreakdown['broker_amt'];
@@ -2100,7 +2143,13 @@ function build_payout_workbook(mysqli $mysqli, int $driverId, int $year, string 
         }
         if ($vendorScope === 'rtex') {
             $tss7 = 0.0;
-            $subtotal = round($totalGross - $insurance - $fuel + $miscAdjustmentTotal, 2);
+            if (($statementBasis ?? 'work_date') !== 'upload_date') {
+                $rtexFscDetails['total'] = (float)$netBreakdown['fuel_surcharge_total'];
+            }
+            $fuelSurchargeTotal = $rtexFscDetails['total'];
+            $subtotal = ($statementBasis ?? 'work_date') === 'upload_date'
+                ? round($totalGross - $brokerAmt - $insurance - $fuel + $miscAdjustmentTotal + $fuelSurchargeTotal, 2)
+                : (float)$netBreakdown['net_total'];
         }
         lonestar_driver_finalize_unpaid_balance(
             $mysqli,
@@ -2176,12 +2225,16 @@ function build_payout_workbook(mysqli $mysqli, int $driverId, int $year, string 
             ? [
                 ['Total Days Worked',   $totalLoads],
                 ['Total Gross',   $totalGross],
+                ['Broker Fee', $brokerAmt],
+                ['Driver Fuel Surcharge', $rtexFscDetails['total']],
                 ['Insurance',     $insurance],
                 ['Fuel',          $statementFuelTransactionTotal],
                 ['Misc Adjustments', $miscAdjustmentTotal],
             ]
             : [
                 ['Total Loads',   $totalLoads],
+                $vendorScope === 'nextier' ? ['Load Earnings', round($totalGross - array_sum(array_column($dataRows, 'nextier_bonus')), 2)] : null,
+                $vendorScope === 'nextier' ? ['Bonuses', array_sum(array_column($dataRows, 'nextier_bonus'))] : null,
                 ['Total Gross',   $totalGross],
                 ['Trailer Fee', $tss7],
                 [broker_percentage_label($brokerPct), $brokerAmt],
@@ -2217,8 +2270,8 @@ function build_payout_pdf(mysqli $mysqli, int $driverId, int $year, string $week
     $dateWhere = statement_basis_date_where($statementBasis, 'dp');
     $dateTypes = statement_basis_date_param_types($statementBasis);
     $dateParams = statement_basis_date_params($statementBasis, $weekStart, $weekEnd);
-    $hasDriverId = table_has_column($mysqli, 'driver_payouts', 'driver_id');
-    $hasDriverContactId = table_has_column($mysqli, 'driver_payouts', 'driver_contact_id');
+    $hasDriverId = report_driver_payout_has_column($mysqli, 'driver_id');
+    $hasDriverContactId = report_driver_payout_has_column($mysqli, 'driver_contact_id');
     $driverMeta = driver_report_meta($mysqli, $driverId);
     $rows = [];
     $rows[] = ['Driver Name', $driverMeta['driver_name']];
@@ -2229,7 +2282,7 @@ function build_payout_pdf(mysqli $mysqli, int $driverId, int $year, string $week
     }
     $rows[] = [];
     $rows[] = ($vendorScope === 'rtex')
-        ? ['Date','Ticket #','Client','Base Rate','Hours','Pay']
+        ? ['Date','Ticket #','Client','Base Rate','Quantity','Pay']
         : ['Date','Ticket #','BOL #','Client','Base Rate','Net Weight (Tons)','Mileage','Pay'];
     $dataRows = [];
     $totalLoadsFromDetail = 0;
@@ -2305,6 +2358,7 @@ function build_payout_pdf(mysqli $mysqli, int $driverId, int $year, string $week
             if ($vendorScope === 'rtex') $row['tss_pay'] = $rtexValues['pay'];
             if ($vendorScope === 'nextier') $row['tss_pay'] = nextier_report_row_pay($nextierMeta, $row['tss_pay'] ?? 0);
             $row['nextier_fsc'] = (float)($nextierMeta['fsc_total'] ?? 0);
+            $row['nextier_bonus'] = (float)($nextierMeta['bonus'] ?? 0);
             $dataRows[] = $row;
             if (!empty($extras['detail_match'])) $totalLoadsFromDetail++;
             $displayRow = ($vendorScope === 'rtex')
@@ -2362,7 +2416,7 @@ function build_payout_pdf(mysqli $mysqli, int $driverId, int $year, string $week
             if ($vendorScope === 'nickelrock') $extras = nickelrock_report_extras(nickelrock_payout_row_meta($mysqli, $ticket_number, $payout_date));
             $trailerMeta = ($vendorScope === 'rtex') ? ['fee_amount' => 0.0] : payout_row_trailer_meta($mysqli, $driverId, $extras, $tss_pay, $vendor_name, (string)$payout_date);
             $rowPay = ($vendorScope === 'rtex') ? $rtexValues['pay'] : (($vendorScope === 'nextier') ? nextier_report_row_pay($nextierMeta, $tss_pay) : $tss_pay);
-            $dataRows[] = compact('payout_date','upload_date','ticket_number','driver_name','vendor_name') + ['tss_pay' => $rowPay, 'trailer_fee' => $trailerMeta['fee_amount'], 'nextier_fsc' => (float)($nextierMeta['fsc_total'] ?? 0)];
+            $dataRows[] = compact('payout_date','upload_date','ticket_number','driver_name','vendor_name') + ['tss_pay' => $rowPay, 'trailer_fee' => $trailerMeta['fee_amount'], 'nextier_bonus' => (float)($nextierMeta['bonus'] ?? 0), 'nextier_fsc' => (float)($nextierMeta['fsc_total'] ?? 0)];
             if (!empty($extras['detail_match'])) $totalLoadsFromDetail++;
             $displayRow = ($vendorScope === 'rtex')
                 ? [
@@ -2410,13 +2464,15 @@ function build_payout_pdf(mysqli $mysqli, int $driverId, int $year, string $week
     // Summary calculations
     $totalLoads = $totalLoadsFromDetail;
     $totalGross = array_sum(array_map(fn($r)=> (float)$r['tss_pay'], $dataRows));
+    $rtexFscDetails = $vendorScope === 'rtex' ? rtex_driver_statement_fsc($mysqli,$dataRows) : ['total'=>0.0,'load_gross'=>0.0,'broker_fee'=>0.0,'lines'=>[]];
+
     $nextierFuelSurchargeTotal = ($vendorScope === 'nextier')
         ? round(array_sum(array_map(fn($r)=> (float)($r['nextier_fsc'] ?? 0), $dataRows)), 2)
         : 0.0;
     $tss7 = ($vendorScope === 'nextier')
         ? trailer_fee_total_for_driver($mysqli, $driverId, (float)$totalGross, $weekStart, $weekEnd, $vendorScope)
         : round(array_sum(array_map(fn($r)=> (float)($r['trailer_fee'] ?? 0), $dataRows)), 2);
-    $netBreakdown = lonestar_driver_week_net_breakdown($mysqli, $driverId, (float)$totalGross, (float)$tss7, $weekStart, $weekEnd, $vendorScope);
+    $netBreakdown = lonestar_driver_week_net_breakdown($mysqli, $driverId, (float)$totalGross, (float)$tss7, $weekStart, $weekEnd, $vendorScope, array_sum(array_column($dataRows, 'nextier_bonus')));
     $payoutPct = (float)$netBreakdown['payout_pct'];
     $brokerPct = (float)($netBreakdown['broker_pct'] ?? $payoutPct);
     $brokerAmt = (float)$netBreakdown['broker_amt'];
@@ -2432,9 +2488,15 @@ function build_payout_pdf(mysqli $mysqli, int $driverId, int $year, string $week
         $subtotal = round($subtotal - (float)($netBreakdown['fuel_surcharge_total'] ?? 0) + $fuelSurchargeTotal, 2);
     }
     if ($vendorScope === 'rtex') {
-        $fuelSurchargeTotal = 0.0;
+        $fuelSurchargeTotal = $rtexFscDetails['total'];
         $tss7 = 0.0;
-        $subtotal = round($totalGross - $insurance - $fuel + $miscAdjustmentTotal, 2);
+        if (($statementBasis ?? 'work_date') !== 'upload_date') {
+                $rtexFscDetails['total'] = (float)$netBreakdown['fuel_surcharge_total'];
+            }
+            $fuelSurchargeTotal = $rtexFscDetails['total'];
+            $subtotal = ($statementBasis ?? 'work_date') === 'upload_date'
+                ? round($totalGross - $brokerAmt - $insurance - $fuel + $miscAdjustmentTotal + $fuelSurchargeTotal, 2)
+                : (float)$netBreakdown['net_total'];
     }
     if ($statementBasis === 'work_date') {
         lonestar_driver_finalize_unpaid_balance(
@@ -2517,7 +2579,16 @@ function build_payout_pdf(mysqli $mysqli, int $driverId, int $year, string $week
     $rows[] = [];
     $rows[] = [];
     $rows[] = [$vendorScope === 'rtex' ? 'Total Days Worked' : 'Total Loads', $totalLoads];
+    if ($vendorScope === 'nextier') {
+        $bonusTotal = round(array_sum(array_column($dataRows, 'nextier_bonus')), 2);
+        $rows[] = ['Load Earnings', money_format_display($totalGross - $bonusTotal)];
+        $rows[] = ['Bonuses', money_format_display($bonusTotal)];
+    }
     $rows[] = ['Total Gross', money_format_display($totalGross)];
+    if ($vendorScope === 'rtex') {
+        $rows[] = ['Broker Fee', money_format_display($brokerAmt)];
+        $rows[] = ['Driver Fuel Surcharge', money_format_display($rtexFscDetails['total'])];
+    }
     if ($vendorScope === 'tss' || $vendorScope === 'nextier') {
         $rows[] = ['Trailer Fee', money_format_display($tss7)];
     }
@@ -2547,12 +2618,16 @@ function build_payout_pdf(mysqli $mysqli, int $driverId, int $year, string $week
         ? [
             ['Total Days Worked', (string)$totalLoads],
             ['Total Gross', money_format_display($totalGross)],
+            ['Broker Fee', money_format_display($brokerAmt)],
+            ['Driver Fuel Surcharge', money_format_display($rtexFscDetails['total'])],
             ['Insurance', money_format_display($insurance)],
             ['Fuel', money_format_display($statementFuelTransactionTotal)],
             ['Misc Adjustments', money_format_display($miscAdjustmentTotal)],
         ]
         : [
             ['Total Loads', (string)$totalLoads],
+            $vendorScope === 'nextier' ? ['Load Earnings', money_format_display($totalGross - array_sum(array_column($dataRows, 'nextier_bonus')))] : null,
+            $vendorScope === 'nextier' ? ['Bonuses', money_format_display(array_sum(array_column($dataRows, 'nextier_bonus')))] : null,
             ['Total Gross', money_format_display($totalGross)],
             ['Trailer Fee', money_format_display($tss7)],
             [broker_percentage_label($brokerPct), money_format_display($brokerAmt)],
@@ -2577,7 +2652,7 @@ function build_payout_pdf(mysqli $mysqli, int $driverId, int $year, string $week
         ['key' => 'ticket',    'label' => 'Ticket #',  'w' => 82, 'align' => 'left'],
         ['key' => 'vendor',    'label' => 'Client',    'w' => 120, 'align' => 'left'],
         ['key' => 'base_rate', 'label' => 'Base Rate', 'w' => 80, 'align' => 'right'],
-        ['key' => 'hours',     'label' => 'Hours',     'w' => 70, 'align' => 'right'],
+        ['key' => 'hours',     'label' => 'Quantity',     'w' => 70, 'align' => 'right'],
         ['key' => 'pay',       'label' => 'Pay',       'w' => 80, 'align' => 'right'],
     ];
     $pdf = build_payout_structured_pdf($title, $driverMeta, $tableRows, $summaryRows, $fuelUsageRows, __DIR__ . '/img/logo.jpg', $vendorScope === 'rtex' ? $rtexColDefs : null);
@@ -2590,8 +2665,8 @@ function build_payout_csv(mysqli $mysqli, int $driverId, int $year, string $week
     $dateWhere = statement_basis_date_where($statementBasis, 'dp');
     $dateTypes = statement_basis_date_param_types($statementBasis);
     $dateParams = statement_basis_date_params($statementBasis, $weekStart, $weekEnd);
-    $hasDriverId = table_has_column($mysqli, 'driver_payouts', 'driver_id');
-    $hasDriverContactId = table_has_column($mysqli, 'driver_payouts', 'driver_contact_id');
+    $hasDriverId = report_driver_payout_has_column($mysqli, 'driver_id');
+    $hasDriverContactId = report_driver_payout_has_column($mysqli, 'driver_contact_id');
     $driverMeta = driver_report_meta($mysqli, $driverId);
     $rows = [];
     $rows[] = [($statementBasis === 'upload_date' ? 'Off-Cycle ' : '') . payout_vendor_scope_label($vendorScope) . ' Payout Report', $weekStart . ' to ' . $weekEnd];
@@ -2606,7 +2681,7 @@ function build_payout_csv(mysqli $mysqli, int $driverId, int $year, string $week
     $rows[] = ['Truck No.', $driverMeta['truck_no']];
     $rows[] = [];
     $rows[] = ($vendorScope === 'rtex')
-        ? ['Date','Ticket #','Client','Base Rate','Hours','Pay']
+        ? ['Date','Ticket #','Client','Base Rate','Quantity','Pay']
         : ['Date','Ticket #','BOL #','Client','Base Rate','Net Weight (Tons)','Mileage','Pay'];
     $dataRows = [];
     $totalLoadsFromDetail = 0;
@@ -2681,6 +2756,7 @@ function build_payout_csv(mysqli $mysqli, int $driverId, int $year, string $week
             if ($vendorScope === 'rtex') $row['tss_pay'] = $rtexValues['pay'];
             if ($vendorScope === 'nextier') $row['tss_pay'] = nextier_report_row_pay($nextierMeta, $row['tss_pay'] ?? 0);
             $row['nextier_fsc'] = (float)($nextierMeta['fsc_total'] ?? 0);
+            $row['nextier_bonus'] = (float)($nextierMeta['bonus'] ?? 0);
             $dataRows[] = $row;
             if (!empty($extras['detail_match'])) $totalLoadsFromDetail++;
             $rows[] = ($vendorScope === 'rtex')
@@ -2718,7 +2794,7 @@ function build_payout_csv(mysqli $mysqli, int $driverId, int $year, string $week
             if ($vendorScope === 'nickelrock') $extras = nickelrock_report_extras(nickelrock_payout_row_meta($mysqli, $ticket_number, $payout_date));
             $trailerMeta = ($vendorScope === 'rtex') ? ['fee_amount' => 0.0] : payout_row_trailer_meta($mysqli, $driverId, $extras, $tss_pay, $vendor_name, (string)$payout_date);
             $rowPay = ($vendorScope === 'rtex') ? $rtexValues['pay'] : (($vendorScope === 'nextier') ? nextier_report_row_pay($nextierMeta, $tss_pay) : $tss_pay);
-            $dataRows[] = compact('payout_date','upload_date','ticket_number','driver_name','vendor_name') + ['tss_pay' => $rowPay, 'trailer_fee' => $trailerMeta['fee_amount'], 'nextier_fsc' => (float)($nextierMeta['fsc_total'] ?? 0)];
+            $dataRows[] = compact('payout_date','upload_date','ticket_number','driver_name','vendor_name') + ['tss_pay' => $rowPay, 'trailer_fee' => $trailerMeta['fee_amount'], 'nextier_bonus' => (float)($nextierMeta['bonus'] ?? 0), 'nextier_fsc' => (float)($nextierMeta['fsc_total'] ?? 0)];
             if (!empty($extras['detail_match'])) $totalLoadsFromDetail++;
             $rows[] = ($vendorScope === 'rtex')
                 ? [
@@ -2745,13 +2821,15 @@ function build_payout_csv(mysqli $mysqli, int $driverId, int $year, string $week
 
     $totalLoads = $totalLoadsFromDetail;
     $totalGross = array_sum(array_map(fn($r)=> (float)$r['tss_pay'], $dataRows));
+    $rtexFscDetails = $vendorScope === 'rtex' ? rtex_driver_statement_fsc($mysqli,$dataRows) : ['total'=>0.0,'load_gross'=>0.0,'broker_fee'=>0.0,'lines'=>[]];
+
     $nextierFuelSurchargeTotal = ($vendorScope === 'nextier')
         ? round(array_sum(array_map(fn($r)=> (float)($r['nextier_fsc'] ?? 0), $dataRows)), 2)
         : 0.0;
     $tss7 = ($vendorScope === 'nextier')
         ? trailer_fee_total_for_driver($mysqli, $driverId, (float)$totalGross, $weekStart, $weekEnd, $vendorScope)
         : round(array_sum(array_map(fn($r)=> (float)($r['trailer_fee'] ?? 0), $dataRows)), 2);
-    $netBreakdown = lonestar_driver_week_net_breakdown($mysqli, $driverId, (float)$totalGross, (float)$tss7, $weekStart, $weekEnd, $vendorScope);
+    $netBreakdown = lonestar_driver_week_net_breakdown($mysqli, $driverId, (float)$totalGross, (float)$tss7, $weekStart, $weekEnd, $vendorScope, array_sum(array_column($dataRows, 'nextier_bonus')));
     $payoutPct = (float)$netBreakdown['payout_pct'];
     $brokerPct = (float)($netBreakdown['broker_pct'] ?? $payoutPct);
     $brokerAmt = (float)$netBreakdown['broker_amt'];
@@ -2767,9 +2845,15 @@ function build_payout_csv(mysqli $mysqli, int $driverId, int $year, string $week
         $subtotal = round($subtotal - (float)($netBreakdown['fuel_surcharge_total'] ?? 0) + $fuelSurchargeTotal, 2);
     }
     if ($vendorScope === 'rtex') {
-        $fuelSurchargeTotal = 0.0;
+        $fuelSurchargeTotal = $rtexFscDetails['total'];
         $tss7 = 0.0;
-        $subtotal = round($totalGross - $insurance - $fuel + $miscAdjustmentTotal, 2);
+        if (($statementBasis ?? 'work_date') !== 'upload_date') {
+                $rtexFscDetails['total'] = (float)$netBreakdown['fuel_surcharge_total'];
+            }
+            $fuelSurchargeTotal = $rtexFscDetails['total'];
+            $subtotal = ($statementBasis ?? 'work_date') === 'upload_date'
+                ? round($totalGross - $brokerAmt - $insurance - $fuel + $miscAdjustmentTotal + $fuelSurchargeTotal, 2)
+                : (float)$netBreakdown['net_total'];
     }
     if ($statementBasis === 'work_date') {
         lonestar_driver_finalize_unpaid_balance(
@@ -2839,7 +2923,16 @@ function build_payout_csv(mysqli $mysqli, int $driverId, int $year, string $week
     $rows[] = [];
     $rows[] = ['Metric', 'Value'];
     $rows[] = [$vendorScope === 'rtex' ? 'Total Days Worked' : 'Total Loads', $totalLoads];
+    if ($vendorScope === 'nextier') {
+        $bonusTotal = round(array_sum(array_column($dataRows, 'nextier_bonus')), 2);
+        $rows[] = ['Load Earnings', money_format_display($totalGross - $bonusTotal)];
+        $rows[] = ['Bonuses', money_format_display($bonusTotal)];
+    }
     $rows[] = ['Total Gross', money_format_display($totalGross)];
+    if ($vendorScope === 'rtex') {
+        $rows[] = ['Broker Fee', money_format_display($brokerAmt)];
+        $rows[] = ['Driver Fuel Surcharge', money_format_display($rtexFscDetails['total'])];
+    }
     if ($vendorScope === 'tss' || $vendorScope === 'nextier') {
         $rows[] = ['Trailer Fee', money_format_display($tss7)];
     }
@@ -2910,8 +3003,8 @@ function driver_has_vendor_payout(
         return false;
     }
 
-    $hasDriverId = table_has_column($mysqli, 'driver_payouts', 'driver_id');
-    $hasDriverContactId = table_has_column($mysqli, 'driver_payouts', 'driver_contact_id');
+    $hasDriverId = report_driver_payout_has_column($mysqli, 'driver_id');
+    $hasDriverContactId = report_driver_payout_has_column($mysqli, 'driver_contact_id');
     $dateColumn = statement_basis_sql_column($statementBasis, 'dp');
     $where = [payout_vendor_sql_condition($vendorScope, 'dp')];
     $types = '';
@@ -3058,8 +3151,8 @@ function driver_statement_filter_metadata(mysqli $mysqli, int $driverId, string 
         return $empty;
     }
 
-    $hasDriverId = table_has_column($mysqli, 'driver_payouts', 'driver_id');
-    $hasDriverContactId = table_has_column($mysqli, 'driver_payouts', 'driver_contact_id');
+    $hasDriverId = report_driver_payout_has_column($mysqli, 'driver_id');
+    $hasDriverContactId = report_driver_payout_has_column($mysqli, 'driver_contact_id');
     $where = [payout_vendor_sql_condition($vendorScope, 'dp')];
     $types = '';
     $params = [];
@@ -3090,7 +3183,7 @@ function driver_statement_filter_metadata(mysqli $mysqli, int $driverId, string 
         $params[] = $driverId;
     }
 
-    $sql = 'SELECT dp.payout_date, dp.upload_date FROM driver_payouts dp WHERE ' . implode(' AND ', $where);
+    $sql = 'SELECT DISTINCT dp.payout_date, dp.upload_date FROM driver_payouts dp WHERE ' . implode(' AND ', $where);
     $stmt = $mysqli->prepare($sql);
     if (!$stmt) {
         return $empty;
@@ -3613,9 +3706,15 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     }
 }
 
-$driverStatementFilters = [];
-foreach ($drivers as $d) {
-    $driverId = (int)$d['driver_id'];
+if (($_GET['action'] ?? '') === 'driver_statement_filters') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    $driverId = (int)($_GET['driver_id'] ?? 0);
+    if ($driverId <= 0 || !in_array($driverId, array_map('intval', array_column($drivers, 'driver_id')), true)) {
+        http_response_code(400);
+        echo json_encode(['error'=>'Select an available driver.']);
+        exit;
+    }
     $meta = driver_statement_filter_metadata($mysqli, $driverId, $selectedPayoutVendor);
     foreach ($years as $yearValue) {
         $yearValue = (int)$yearValue;
@@ -3630,7 +3729,7 @@ foreach ($drivers as $d) {
             continue;
         }
         $weekKey = $weekStart . '|' . $weekEnd;
-        if (!in_array($weekKey, $meta['work_weeks'], true) && driver_has_vendor_payout($mysqli, $driverId, $selectedPayoutVendor, null, $weekStart, $weekEnd, 'work_date')) {
+        if (!in_array($weekKey, $meta['work_weeks'], true) && lonestar_driver_week_has_report_activity($mysqli, $driverId, $weekStart, $weekEnd, $selectedPayoutVendor)) {
             $meta['work_weeks'][] = $weekKey;
             $weekYear = (string)(int)substr($weekStart, 0, 4);
             if (!in_array($weekYear, $meta['work_years'], true)) {
@@ -3640,7 +3739,8 @@ foreach ($drivers as $d) {
     }
     rsort($meta['work_years']);
     rsort($meta['work_weeks']);
-    $driverStatementFilters[$driverId] = $meta;
+    echo json_encode($meta);
+    exit;
 }
 ?>
 <!DOCTYPE html>
@@ -3661,6 +3761,12 @@ foreach ($drivers as $d) {
     .main { margin-left:250px; padding:20px; flex:1; min-width:0; }
     .sidebar.collapsed + .main { margin-left:0; }
     @media (max-width:768px){ .sidebar { transform: translateX(-250px); } .sidebar.open { transform: translateX(0); } .main { margin:0; } }
+    .main { position:relative; isolation:isolate; }
+    .main::before {
+      content:""; position:fixed; inset:15% 10%; z-index:-1; pointer-events:none;
+      background: url("<?= htmlspecialchars(lonestar_base_path() . '/img/logo.png', ENT_QUOTES) ?>") center / contain no-repeat;
+      opacity:0.04;
+    }
     form { margin-bottom:2em; border:1px solid #ccc; padding:15px; border-radius:5px; }
     label, select, button { display:block; width:100%; margin:8px 0; }
   </style>
@@ -3718,17 +3824,7 @@ foreach ($drivers as $d) {
         <select name="driver_id" class="form-control payout-driver" required>
           <option value="">-- Select Driver --</option>
           <?php foreach($drivers as $d): ?>
-            <?php
-              $driverId = (int)$d['driver_id'];
-              $filterMeta = $driverStatementFilters[$driverId] ?? ['work_years' => [], 'work_weeks' => [], 'upload_years' => [], 'upload_weeks' => []];
-            ?>
-            <option
-              value="<?= $driverId ?>"
-              data-work-years="<?= htmlspecialchars(implode(',', $filterMeta['work_years']), ENT_QUOTES) ?>"
-              data-work-weeks="<?= htmlspecialchars(implode(',', $filterMeta['work_weeks']), ENT_QUOTES) ?>"
-              data-upload-years="<?= htmlspecialchars(implode(',', $filterMeta['upload_years']), ENT_QUOTES) ?>"
-              data-upload-weeks="<?= htmlspecialchars(implode(',', $filterMeta['upload_weeks']), ENT_QUOTES) ?>"
-            ><?= htmlspecialchars($d['legal_name']) ?></option>
+            <option value="<?= (int)$d['driver_id'] ?>"><?= htmlspecialchars($d['legal_name']) ?></option>
           <?php endforeach; ?>
         </select>
       </label>
@@ -3891,40 +3987,76 @@ foreach ($drivers as $d) {
       const year = form.querySelector('.payout-year');
       const basis = form.querySelector('.payout-basis');
       if (!format || !week) return;
-      const optionList = (option, key) => (option.dataset[key] || '').split(',').filter(Boolean);
-      const driverMatchesFilters = (option) => {
-        if (!driver || !option.value) return true;
-        const needsWeek = format.value === 'pdf' || format.value === 'csv';
-        const offcycleMode = basis && basis.value === 'upload_date';
-        const years = optionList(option, offcycleMode && needsWeek ? 'uploadYears' : 'workYears');
-        const weeks = optionList(option, offcycleMode ? 'uploadWeeks' : 'workWeeks');
-        if (needsWeek && week.value) {
-          return weeks.includes(week.value) && (!year || years.includes(year.value));
-        }
-        return !year || years.includes(year.value);
+      const allYears = year ? [...year.options].map(o => ({value:o.value,text:o.text})) : [];
+      const allWeeks = [...week.options].filter(o => o.value).map(o => ({value:o.value,text:o.text}));
+      const submit = form.querySelector('button[type="submit"]');
+      let metadata = null;
+      let pending = false;
+      let requestNumber = 0;
+      const status = document.createElement('div');
+      status.className = 'small text-muted';
+      status.setAttribute('role', 'status');
+      if (driver) driver.parentElement.after(status);
+      const populate = (select, options, allowed, placeholder) => {
+        const previous = select.value;
+        select.replaceChildren();
+        if (placeholder) select.add(new Option(placeholder, ''));
+        options.filter(o => !allowed || allowed.includes(o.value)).forEach(o => select.add(new Option(o.text,o.value)));
+        if ([...select.options].some(o => o.value === previous)) select.value = previous;
       };
       const sync = () => {
         const needsWeek = format.value === 'pdf' || format.value === 'csv';
-        week.disabled = !needsWeek;
-        week.required = needsWeek;
-        if (!needsWeek) {
-          week.value = '';
-        }
+        const offcycle = basis && basis.value === 'upload_date';
         if (driver) {
-          let selectedStillAvailable = false;
-          Array.from(driver.options).forEach((option) => {
-            const show = driverMatchesFilters(option);
-            option.hidden = !show;
-            option.disabled = !show;
-            if (show && option.selected && option.value) {
-              selectedStillAvailable = true;
-            }
-          });
-          if (driver.value && !selectedStillAvailable) {
-            driver.value = '';
-          }
+          const available = !!metadata && !!driver.value && !pending;
+          const years = available ? metadata[offcycle && needsWeek ? 'upload_years' : 'work_years'].map(String) : [];
+          const weeks = available ? metadata[offcycle ? 'upload_weeks' : 'work_weeks'] : [];
+          populate(year, allYears, years, null);
+          const yearWeeks = weeks.filter(value => value.slice(0,4) === year.value || value.split('|')[1]?.slice(0,4) === year.value);
+          populate(week, allWeeks, yearWeeks, '-- Select Week --');
+          year.disabled = !available || !years.length;
+          week.disabled = !available || !needsWeek || !yearWeeks.length;
+          week.required = available && needsWeek;
+          submit.disabled = !available || !years.length || (needsWeek && !yearWeeks.length);
+          if (available) status.textContent = years.length && (!needsWeek || yearWeeks.length) ? '' : 'No statements available for this driver and statement mode.';
+        } else {
+          week.disabled = !needsWeek;
+          week.required = needsWeek;
         }
+        if (!needsWeek) week.value = '';
       };
+      if (driver) {
+        driver.addEventListener('change', async () => {
+          const currentRequest = ++requestNumber;
+          metadata = null;
+          pending = !!driver.value;
+          status.textContent = pending ? 'Loading available weeks…' : 'Select a driver to load available weeks.';
+          sync();
+          if (!driver.value) return;
+          const url = new URL(window.location.href);
+          url.searchParams.set('action','driver_statement_filters');
+          url.searchParams.set('driver_id',driver.value);
+          url.searchParams.set('payout_vendor',form.querySelector('[name="payout_vendor"]').value);
+          try {
+            const response = await fetch(url, {cache:'no-store', credentials:'same-origin'});
+            if (!response.ok) throw new Error('Unable to load available weeks.');
+            const result = await response.json();
+            if (!Array.isArray(result.work_weeks) || !Array.isArray(result.upload_weeks)) throw new Error('Invalid response');
+            if (currentRequest !== requestNumber) return;
+            metadata = result;
+            pending = false;
+            sync();
+          } catch (error) {
+            if (currentRequest !== requestNumber) return;
+            pending = false;
+            sync();
+            status.textContent = 'Could not load weeks. Select the driver again to retry, or reload the page if your session expired.';
+          }
+        });
+        form.addEventListener('submit', event => {
+          if (!metadata || pending || submit.disabled) event.preventDefault();
+        });
+      }
       format.addEventListener('change', sync);
       week.addEventListener('change', sync);
       if (year) year.addEventListener('change', sync);

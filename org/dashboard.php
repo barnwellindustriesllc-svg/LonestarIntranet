@@ -5,6 +5,13 @@ require __DIR__ . '/includes/payout_net_helpers.php';
 
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 $mysqli->set_charset('utf8mb4');
+header('Cache-Control: no-store');
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && ($_GET['dashboard_data'] ?? '') !== '1') {
+    require __DIR__ . '/includes/dashboard_shell.php';
+    exit;
+}
+// Long dashboard calculations must not lock other pages in this login session.
+if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
 
 function h(string $value): string {
     return htmlspecialchars($value, ENT_QUOTES);
@@ -298,7 +305,8 @@ function dashboard_backfill_annual_profitability(mysqli $mysqli, int $year): voi
                     - (float)($breakdown['broker_amt'] ?? 0)
                     - (float)($breakdown['insurance'] ?? 0)
                     - (float)($breakdown['fuel'] ?? 0)
-                    + (float)($breakdown['misc_adjustment_total'] ?? 0),
+                    + (float)($breakdown['misc_adjustment_total'] ?? 0)
+            + (float)($breakdown['fuel_surcharge_total'] ?? 0),
                     2
                 );
             }
@@ -672,7 +680,13 @@ while ($row = $res->fetch_assoc()) {
 }
 $res->close();
 
-$res = $mysqli->query("SELECT MAX(payout_date) AS latest_date FROM driver_payouts");
+$activityDatesSql = "SELECT payout_date AS activity_date FROM driver_payouts";
+if (dashboard_table_exists($mysqli, 'tss_misc_adjustments')) {
+    // Apply posted adjustments even when the driver has stopped receiving payouts.
+    // Future-dated adjustments must not advance the live dashboard prematurely.
+    $activityDatesSql .= " UNION ALL SELECT adjustment_date AS activity_date FROM tss_misc_adjustments WHERE adjustment_date <= CURDATE()";
+}
+$res = $mysqli->query("SELECT MAX(activity_date) AS latest_date FROM ({$activityDatesSql}) dashboard_activity");
 if ($row = $res->fetch_assoc()) {
     $latestPayoutDate = trim((string)($row['latest_date'] ?? ''));
     if ($latestPayoutDate !== '') {
@@ -803,7 +817,8 @@ foreach ($vendorDriverWeekRows as $row) {
             - (float)($breakdown['broker_amt'] ?? 0)
             - (float)($breakdown['insurance'] ?? 0)
             - (float)($breakdown['fuel'] ?? 0)
-            + (float)($breakdown['misc_adjustment_total'] ?? 0),
+            + (float)($breakdown['misc_adjustment_total'] ?? 0)
+            + (float)($breakdown['fuel_surcharge_total'] ?? 0),
             2
         );
     }
@@ -947,6 +962,10 @@ if (dashboard_table_exists($mysqli, 'fuel_report_transactions')) {
     $res->close();
 }
 
+$fuelWriteOffExistsSql = '0';
+if (dashboard_table_exists($mysqli, 'tss_misc_adjustments')) {
+    $fuelWriteOffExistsSql = "EXISTS (SELECT 1 FROM tss_misc_adjustments wa WHERE wa.driver_contact_id=dfb.driver_id AND wa.adjustment_type='write_off' AND wa.payout_week_start='{$mysqli->real_escape_string($dashboardWeekStart)}')";
+}
 if (dashboard_table_exists($mysqli, 'driver_fuel_balances')) {
     $res = $mysqli->query(
         "SELECT dfb.driver_id,
@@ -954,16 +973,16 @@ if (dashboard_table_exists($mysqli, 'driver_fuel_balances')) {
                 COALESCE(dfb.balance,0) AS balance
            FROM driver_fuel_balances dfb
            JOIN driver_contacts dc ON dc.id = dfb.driver_id
-          WHERE COALESCE(dfb.balance,0) > 0
-            AND COALESCE(dc.is_disabled,0) = 0
-            AND (dfb.last_calculated_week_start IS NULL OR dfb.last_calculated_week_start < '{$mysqli->real_escape_string($dashboardWeekStart)}')"
+          WHERE (COALESCE(dfb.balance,0) > 0 OR {$fuelWriteOffExistsSql})
+            AND (COALESCE(dc.is_disabled,0) = 0 OR {$fuelWriteOffExistsSql})
+            AND (dfb.last_calculated_week_start IS NULL OR dfb.last_calculated_week_start <= '{$mysqli->real_escape_string($dashboardWeekStart)}')"
     );
     while ($row = $res->fetch_assoc()) {
         $driverId = (int)($row['driver_id'] ?? 0);
         if ($driverId <= 0 || isset($fuelByDriver[$driverId])) {
             continue;
         }
-        $balance = round((float)($row['balance'] ?? 0), 2);
+        $balance = lonestar_driver_open_fuel_balance($mysqli, $driverId, $dashboardWeekStart);
         if ($balance <= 0.005) {
             continue;
         }
@@ -1071,9 +1090,17 @@ foreach ($ownerPayoutSummaryRows as $scope => $ownerSummary) {
 $currentDashboardYear = (int)date('Y');
 lonestar_owner_payout_summary_ensure_table($mysqli);
 try {
-    dashboard_backfill_annual_profitability($mysqli, $currentDashboardYear);
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') === 'rebuild_profitability') {
+        if (!hash_equals(hash('sha256', 'dashboard-backfill|' . session_id()), (string)($_POST['rebuild_token'] ?? ''))) {
+            throw new RuntimeException('Reload the dashboard before rebuilding history.');
+        }
+        dashboard_backfill_annual_profitability($mysqli, $currentDashboardYear);
+        $balanceTrackerMessage = 'Missing annual profitability summaries rebuilt.';
+    }
 } catch (Throwable $e) {
     error_log('Annual client profitability backfill failed: ' . $e->getMessage());
+    $balanceTrackerMessage = 'Annual profitability could not be rebuilt. Check the server error log.';
+    $balanceTrackerMessageType = 'danger';
 }
 $stmtAnnualProfit = $mysqli->prepare(
     "SELECT payout_vendor,
@@ -1369,6 +1396,7 @@ if (dashboard_table_exists($mysqli, 'tss_misc_adjustments')) {
                 COALESCE(NULLIF(CONCAT(dc.first_name, ' ', dc.last_name), ''), 'Unassigned') AS driver_name,
                 COALESCE(SUM(CASE WHEN tma.adjustment_type='misc_deduction' THEN ABS(tma.amount) ELSE 0 END),0) AS deductions,
                 COALESCE(SUM(CASE WHEN tma.adjustment_type='misc_payment' THEN ABS(tma.amount) ELSE 0 END),0) AS payments,
+                COALESCE(SUM(CASE WHEN tma.adjustment_type='write_off' THEN ABS(tma.amount) ELSE 0 END),0) AS write_offs,
                 COALESCE(SUM({$autoTrailerRentalExpr}),0) AS trailer_rental_deductions,
                 COUNT(*) AS adjustments
            FROM tss_misc_adjustments tma
@@ -1382,7 +1410,7 @@ if (dashboard_table_exists($mysqli, 'tss_misc_adjustments')) {
         $scope = (string)($row['vendor_scope'] ?? 'tss');
         $key = $driverId . '|' . $scope;
         $seenAdjustmentKeys[$key] = true;
-        $currentNet = round((float)$row['payments'] - (float)$row['deductions'], 2);
+        $currentNet = round((float)$row['payments'] + (float)$row['write_offs'] - (float)$row['deductions'], 2);
         $trailerRentalDeductions = round((float)($row['trailer_rental_deductions'] ?? 0), 2);
         $priorNet = $driverId > 0 ? lonestar_driver_open_misc_balance($mysqli, $driverId, $scope, $dashboardWeekStart) : 0.0;
         $net = round($currentNet + $priorNet, 2);
@@ -1716,6 +1744,11 @@ foreach ($weeklyVendorNames as $idx => $vendorName) {
     <div class="main">
       <div class="dashboard-header">
         <h1>Operations Dashboard</h1>
+        <form method="post" action="dashboard.php" class="mb-2">
+          <input type="hidden" name="action" value="rebuild_profitability">
+          <input type="hidden" name="rebuild_token" value="<?= h(hash('sha256', 'dashboard-backfill|' . session_id())) ?>">
+          <button class="btn btn-sm btn-outline-secondary" type="submit">Rebuild missing annual profitability</button>
+        </form>
         <p class="text-muted">Live snapshot of driver, payout, and owner metrics across the system.</p>
       </div>
       <?php if ($balanceTrackerMessage !== '' && (string)($_GET['refresh_balances'] ?? '') !== '1'): ?>
@@ -2467,7 +2500,7 @@ foreach ($weeklyVendorNames as $idx => $vendorName) {
     </div>
   </div>
 
-  <script>
+  <script id="dashboardCharts">
     const weeklyLabels = <?= json_encode($weeklyLabels, JSON_HEX_TAG) ?>;
     const weeklyValues = <?= json_encode($weeklyValues, JSON_HEX_TAG) ?>;
     const weeklyVendorLabels = <?= json_encode($weeklyVendorLabels, JSON_HEX_TAG) ?>;

@@ -39,7 +39,7 @@ function ensure_misc_adjustments_table(mysqli $mysqli): void {
           source_upload_date DATE NOT NULL,
           payout_week_start DATE NOT NULL,
           driver_contact_id INT NOT NULL,
-          adjustment_type ENUM('misc_payment','misc_deduction') NOT NULL,
+          adjustment_type ENUM('misc_payment','misc_deduction','write_off') NOT NULL,
           amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
           comments VARCHAR(255) NOT NULL,
           created_by INT NULL,
@@ -48,6 +48,12 @@ function ensure_misc_adjustments_table(mysqli $mysqli): void {
           KEY idx_tss_misc_adjustments_source_date (source_upload_date)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
+    $typeColumn = $mysqli->query("SHOW COLUMNS FROM tss_misc_adjustments LIKE 'adjustment_type'");
+    $typeDefinition = $typeColumn->fetch_assoc();
+    $typeColumn->close();
+    if (strpos((string)($typeDefinition['Type'] ?? ''), "'write_off'") === false) {
+        $mysqli->query("ALTER TABLE tss_misc_adjustments MODIFY COLUMN adjustment_type ENUM('misc_payment','misc_deduction','write_off') NOT NULL");
+    }
     $columns = [
         'payout_vendor' => "ALTER TABLE tss_misc_adjustments ADD COLUMN payout_vendor VARCHAR(20) NOT NULL DEFAULT 'TSS' AFTER id",
         'adjustment_date' => "ALTER TABLE tss_misc_adjustments ADD COLUMN adjustment_date DATE NULL AFTER source_upload_date",
@@ -159,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $form['adjustment_date'])) {
             $errors[] = 'Select a valid adjustment date.';
         }
-        if (!in_array($form['adjustment_type'], ['misc_payment', 'misc_deduction'], true)) {
+        if (!in_array($form['adjustment_type'], ['misc_payment', 'misc_deduction', 'write_off'], true)) {
             $errors[] = 'Select a valid adjustment type.';
         }
         $amount = parse_money_value($form['amount']);
@@ -376,7 +382,7 @@ $pageUrl = static function (int $targetPage) use ($baseQuery): string {
       <div class="d-flex justify-content-between align-items-start mb-3">
         <div>
           <h1 class="h3 mb-1">Miscellaneous Payment Adjustments</h1>
-          <p class="text-muted mb-0">Add, edit, and review driver payments or deductions for any past or future date.</p>
+          <p class="text-muted mb-0">Add, edit, and review driver payments, deductions, or write-offs for any past or future date. Enter a write-off as a positive amount to offset an unpaid balance, and explain the reason in comments.</p>
         </div>
       </div>
 
@@ -417,6 +423,7 @@ $pageUrl = static function (int $targetPage) use ($baseQuery): string {
             <select name="adjustment_type" class="form-select" required>
               <option value="misc_payment" <?= $form['adjustment_type'] === 'misc_payment' ? 'selected' : '' ?>>Misc Payment</option>
               <option value="misc_deduction" <?= $form['adjustment_type'] === 'misc_deduction' ? 'selected' : '' ?>>Misc Deduction</option>
+              <option value="write_off" <?= $form['adjustment_type'] === 'write_off' ? 'selected' : '' ?>>Write-off</option>
             </select>
           </div>
           <div class="col-md-2">
@@ -491,7 +498,7 @@ $pageUrl = static function (int $targetPage) use ($baseQuery): string {
                     <td><?= h($row['payout_week_start']) ?></td>
                     <td><?= h(vendor_options()[$row['payout_vendor']] ?? $row['payout_vendor']) ?></td>
                     <td><?= h($row['driver_name'] ?: ('Driver #' . $row['driver_contact_id'])) ?></td>
-                    <td><?= $row['adjustment_type'] === 'misc_deduction' ? 'Misc Deduction' : 'Misc Payment' ?></td>
+                    <td><?= $row['adjustment_type'] === 'write_off' ? 'Write-off' : ($row['adjustment_type'] === 'misc_deduction' ? 'Misc Deduction' : 'Misc Payment') ?></td>
                     <td class="text-end"><?= money($row['amount']) ?></td>
                     <td><?= h($row['comments']) ?></td>
                     <td><?= h($row['updated_at'] ?: $row['created_at']) ?></td>

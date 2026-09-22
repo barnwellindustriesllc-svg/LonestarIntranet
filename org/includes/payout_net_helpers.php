@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/rtex_fsc.php';
 require_once __DIR__ . '/trailer_assignment_history.php';
 require_once __DIR__ . '/balance_history.php';
 
@@ -984,6 +985,17 @@ if (!function_exists('lonestar_driver_vendor_week_gross')) {
     }
 }
 
+function lonestar_nextier_week_bonus_total(mysqli $db, int $driverId, string $start, string $end): float {
+    if ($driverId <= 0 || !lonestar_payout_table_exists($db, 'nextier_payout_rows')) return 0.0;
+    $stmt = $db->prepare('SELECT COALESCE(SUM(bonus),0) FROM nextier_payout_rows WHERE matched_contact_id=? AND work_date BETWEEN ? AND ?');
+    $stmt->bind_param('iss', $driverId, $start, $end);
+    $stmt->execute();
+    $stmt->bind_result($amount);
+    $total = $stmt->fetch() ? (float)$amount : 0.0;
+    $stmt->close();
+    return round($total, 2);
+}
+
 if (!function_exists('lonestar_driver_nextier_week_fuel_surcharge_total')) {
     function lonestar_driver_nextier_week_fuel_surcharge_total(mysqli $mysqli, int $driverId, string $weekStart, string $weekEnd): float {
         if (
@@ -1383,7 +1395,7 @@ if (!function_exists('lonestar_driver_vendor_pre_fuel_balance')) {
             $brokerAmt = lonestar_vendor_broker_fee_amount(
                 $mysqli,
                 $scope,
-                $gross,
+                $scope === 'nextier' ? max(0.0, $gross - lonestar_nextier_week_bonus_total($mysqli, $driverId, $weekStart, $weekEnd)) : $gross,
                 $scope === 'rtex' ? lonestar_rtex_driver_week_hours_total($mysqli, $driverId, $weekStart, $weekEnd) : 0.0
             );
         }
@@ -1393,6 +1405,8 @@ if (!function_exists('lonestar_driver_vendor_pre_fuel_balance')) {
             $fuelSurchargeTotal = lonestar_driver_week_fuel_surcharge_total($mysqli, $driverId, $weekStart, $weekEnd);
         } elseif ($scope === 'nextier') {
             $fuelSurchargeTotal = lonestar_driver_nextier_week_fuel_surcharge_total($mysqli, $driverId, $weekStart, $weekEnd);
+        } elseif ($scope === 'rtex') {
+            $fuelSurchargeTotal = lonestar_driver_rtex_week_fuel_surcharge_total($mysqli, $driverId, $weekStart, $weekEnd);
         }
         return round($gross - $trailerFee - $brokerAmt - $insurance + $miscAdjustmentTotal + $fuelSurchargeTotal, 2);
     }
@@ -1425,7 +1439,7 @@ if (!function_exists('lonestar_driver_vendor_pre_insurance_balance')) {
             $brokerAmt = lonestar_vendor_broker_fee_amount(
                 $mysqli,
                 $scope,
-                $gross,
+                $scope === 'nextier' ? max(0.0, $gross - lonestar_nextier_week_bonus_total($mysqli, $driverId, $weekStart, $weekEnd)) : $gross,
                 $scope === 'rtex' ? lonestar_rtex_driver_week_hours_total($mysqli, $driverId, $weekStart, $weekEnd) : 0.0
             );
         }
@@ -1435,6 +1449,8 @@ if (!function_exists('lonestar_driver_vendor_pre_insurance_balance')) {
             $fuelSurchargeTotal = lonestar_driver_week_fuel_surcharge_total($mysqli, $driverId, $weekStart, $weekEnd);
         } elseif ($scope === 'nextier') {
             $fuelSurchargeTotal = lonestar_driver_nextier_week_fuel_surcharge_total($mysqli, $driverId, $weekStart, $weekEnd);
+        } elseif ($scope === 'rtex') {
+            $fuelSurchargeTotal = lonestar_driver_rtex_week_fuel_surcharge_total($mysqli, $driverId, $weekStart, $weekEnd);
         }
         return round($gross - $trailerFee - $brokerAmt + $miscAdjustmentTotal + $fuelSurchargeTotal, 2);
     }
@@ -1601,7 +1617,7 @@ if (!function_exists('lonestar_driver_week_net_breakdown')) {
         float $trailerFeeTotal,
         string $weekStart,
         string $weekEnd,
-        string $vendorScope = 'tss'
+        string $vendorScope = 'tss', ?float $nextierBonusTotal = null
     ): array {
         $brokerFeeSettings = lonestar_vendor_broker_fee_settings($mysqli, $vendorScope);
         $payoutPct = ($brokerFeeSettings['fee_mode'] ?? 'percentage') === 'percentage'
@@ -1639,11 +1655,13 @@ if (!function_exists('lonestar_driver_week_net_breakdown')) {
         $brokerRate = (($brokerFeeSettings['fee_mode'] ?? 'percentage') === 'flat') ? (float)$brokerFeeSettings['fee_value'] : 0.0;
         $brokerAmt = $scope === 'tss'
             ? lonestar_tss_driver_week_broker_fee_amount($mysqli, $driverId, $weekStart, $weekEnd, $grossTotal, $brokerFeeSettings)
-            : lonestar_vendor_broker_fee_amount($mysqli, $scope, $grossTotal, $brokerHours);
+            : lonestar_vendor_broker_fee_amount($mysqli, $scope,
+                $scope === 'nextier' ? max(0.0, $grossTotal - ($nextierBonusTotal ?? lonestar_nextier_week_bonus_total($mysqli, $driverId, $weekStart, $weekEnd))) : $grossTotal,
+                $brokerHours);
         $miscAdjustmentTotal = lonestar_driver_week_misc_adjustment_total($mysqli, $driverId, $weekStart, $scope);
 
         $fuelSurchargeTotal = $isRtex
-            ? 0.0
+            ? lonestar_driver_rtex_week_fuel_surcharge_total($mysqli, $driverId, $weekStart, $weekEnd)
             : ($scope === 'nextier'
                 ? lonestar_driver_nextier_week_fuel_surcharge_total($mysqli, $driverId, $weekStart, $weekEnd)
                 : lonestar_driver_week_fuel_surcharge_total($mysqli, $driverId, $weekStart, $weekEnd));

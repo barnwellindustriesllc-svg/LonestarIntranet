@@ -1,6 +1,7 @@
 <?php
 require __DIR__ . '/includes/auth.php';
 require __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/rtex_fsc.php';
 require __DIR__ . '/includes/payout_net_helpers.php';
 
 $currentUser = $_SESSION['username'] ?? '';
@@ -899,7 +900,7 @@ function owner_report_driver_week_rows(mysqli $mysqli, int $driverId, string $we
                 'vendor_name' => (string)($row['vendor_name'] ?? ''),
                 'tss_pay' => $gross,
                 'trailer_fee' => in_array($vendorScope, ['rtex', 'nextier', 'nickelrock'], true) ? 0.0 : driver_trailer_fee_amount($mysqli, $driverId, $gross, (string)($row['ticket_number'] ?? ''), (string)($row['payout_date'] ?? ''), $row['vendor_name'] ?? ''),
-                'nextier_fsc' => (float)($nextierMeta['fsc_total'] ?? 0),
+                'nextier_bonus' => (float)($nextierMeta['bonus'] ?? 0), 'nextier_fsc' => (float)($nextierMeta['fsc_total'] ?? 0),
             ];
         }
     } else {
@@ -920,7 +921,7 @@ function owner_report_driver_week_rows(mysqli $mysqli, int $driverId, string $we
                 'vendor_name' => (string)$vendorName,
                 'tss_pay' => $gross,
                 'trailer_fee' => in_array($vendorScope, ['rtex', 'nextier', 'nickelrock'], true) ? 0.0 : driver_trailer_fee_amount($mysqli, $driverId, $gross, (string)$ticketNumber, (string)$payoutDate, $vendorName),
-                'nextier_fsc' => (float)($nextierMeta['fsc_total'] ?? 0),
+                'nextier_bonus' => (float)($nextierMeta['bonus'] ?? 0), 'nextier_fsc' => (float)($nextierMeta['fsc_total'] ?? 0),
             ];
         }
     }
@@ -1097,16 +1098,19 @@ foreach (owner_report_driver_candidates($mysqli) as $driver) {
         $trailerFeeTotal = trailer_fee_total_for_driver($mysqli, $driverId, $totalGross, $weekStart, $weekEnd, $selectedPayoutVendor);
     }
     $grossAfterTrailer = round($totalGross - $trailerFeeTotal, 2);
-    $netBreakdown = lonestar_driver_week_net_breakdown($mysqli, $driverId, $totalGross, $trailerFeeTotal, $weekStart, $weekEnd, $selectedPayoutVendor);
+    $netBreakdown = lonestar_driver_week_net_breakdown($mysqli, $driverId, $totalGross, $trailerFeeTotal, $weekStart, $weekEnd, $selectedPayoutVendor, array_sum(array_column($dataRows, 'nextier_bonus')));
     $brokerageFee = (float)($netBreakdown['broker_amt'] ?? 0);
     $insurance = (float)($netBreakdown['insurance'] ?? 0);
     $net = (float)$netBreakdown['net_total'];
-    $nextierFuelSurchargeTotal = 0.0;
+    $driverFuelSurchargeTotal = 0.0;
     if ($selectedPayoutVendor === 'nextier') {
-        $nextierFuelSurchargeTotal = round(array_sum(array_map(static fn($r) => (float)($r['nextier_fsc'] ?? 0), $dataRows)), 2);
-        $net = round($net - (float)($netBreakdown['fuel_surcharge_total'] ?? 0) + $nextierFuelSurchargeTotal, 2);
+        $driverFuelSurchargeTotal = round(array_sum(array_map(static fn($r) => (float)($r['nextier_fsc'] ?? 0), $dataRows)), 2);
+        $net = round($net - (float)($netBreakdown['fuel_surcharge_total'] ?? 0) + $driverFuelSurchargeTotal, 2);
     } elseif ($selectedPayoutVendor === 'rtex') {
-        $net = round($totalGross - $insurance - (float)$netBreakdown['fuel'] + (float)$netBreakdown['misc_adjustment_total'], 2);
+        $rtexDetails = ['broker_fee'=>(float)$netBreakdown['broker_amt'], 'total'=>(float)$netBreakdown['fuel_surcharge_total']];
+        $brokerageFee = (float)$rtexDetails['broker_fee'];
+        $driverFuelSurchargeTotal = (float)$rtexDetails['total'];
+        $net = (float)$netBreakdown['net_total'];
     }
     $otherOpenBalanceTotal = lonestar_driver_other_open_balance_total($mysqli, $driverId, $selectedPayoutVendor);
     $net = lonestar_driver_total_net_after_open_balances($net, $netBreakdown, $otherOpenBalanceTotal);
@@ -1120,7 +1124,7 @@ foreach (owner_report_driver_candidates($mysqli) as $driver) {
         'gross_total' => $grossAfterTrailer,
         'brokerage_fee' => $brokerageFee,
         'insurance' => $insurance,
-        'fuel_surcharge' => $nextierFuelSurchargeTotal,
+        'fuel_surcharge' => $driverFuelSurchargeTotal,
         'net_total' => $net,
     ];
     if ($net <= 0.0) {
@@ -1131,7 +1135,7 @@ foreach (owner_report_driver_candidates($mysqli) as $driver) {
     $grossDisplayTotal += $grossAfterTrailer;
     $grossRevenueTotal += $totalGross;
     $brokerageFeeTotal += $brokerageFee;
-    $fuelSurchargeTotal += $nextierFuelSurchargeTotal;
+    $fuelSurchargeTotal += $driverFuelSurchargeTotal;
     $insuranceTotal += $insurance;
     $fuelTotal += (float)($netBreakdown['fuel'] ?? 0);
     $miscRevenueTotal += (float)($netBreakdown['misc_adjustment_total'] ?? 0);
