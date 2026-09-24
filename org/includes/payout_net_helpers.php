@@ -463,9 +463,14 @@ if (!function_exists('lonestar_driver_week_fuel_surcharge_total')) {
             END";
         }
 
+        $fscAmountExpr = "({$surchargeBaseExpr}) * COALESCE(ldr.fuel_surcharge_rate, 0)";
+        if (lonestar_payout_column_exists($mysqli, 'ls_detail_raw', 'fuel_surcharge_amount')) {
+            $fscAmountExpr = "COALESCE(ldr.fuel_surcharge_amount, {$fscAmountExpr})";
+        }
+
         $sql = "
             SELECT COALESCE(SUM(
-                ({$surchargeBaseExpr}) * COALESCE(ldr.fuel_surcharge_rate, 0)
+                {$fscAmountExpr}
             ), 0)
               FROM ls_detail_raw ldr
               LEFT JOIN (

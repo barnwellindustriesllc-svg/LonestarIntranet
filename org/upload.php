@@ -14,6 +14,7 @@ require __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/payout_net_helpers.php';
 require_once __DIR__ . '/includes/audit.php';
 require_once __DIR__ . '/includes/rtex_load_helpers.php';
+require_once __DIR__ . '/includes/tss_fsc.php';
 
 use Shuchkin\SimpleXLSX;
 
@@ -108,6 +109,7 @@ function ensure_ls_detail_fuel_surcharge_type_column(mysqli $mysqli): void {
 }
 function normalize_fuel_surcharge_type($value): string {
   $type = strtolower(trim((string)$value));
+  if ($type === 'none') return 'none';
   if (in_array($type, ['ton', 'tons', 'tonnage', 'per ton', 'per-ton'], true)) {
     return 'tonnage';
   }
@@ -1501,7 +1503,7 @@ function get_driver_fuel_surcharge_rows(mysqli $mysqli, string $weekStart): arra
            COALESCE(NULLIF(dc.truck_no, ''), GROUP_CONCAT(DISTINCT ldr.`Truck #` ORDER BY ldr.`Truck #` SEPARATOR ', ')) AS truck_number,
            SUM({$milesExpr}) AS total_miles,
            SUM({$tonsExpr}) AS total_tons,
-           SUM({$surchargeBaseExpr} * COALESCE(ldr.fuel_surcharge_rate, 0)) AS total_fuel_surcharge
+           SUM(COALESCE(ldr.fuel_surcharge_amount, {$surchargeBaseExpr} * COALESCE(ldr.fuel_surcharge_rate, 0))) AS total_fuel_surcharge
       FROM ls_detail_raw ldr
       LEFT JOIN (
         SELECT upload_date, ticket_number, driver_contact_id, MIN(payout_date) AS payout_date
@@ -1804,6 +1806,30 @@ ensure_nickelrock_job_rates_table($mysqli);
 ensure_ls_detail_total_bonuses_column($mysqli);
 ensure_ls_detail_fuel_surcharge_rate_column($mysqli);
 ensure_ls_detail_fuel_surcharge_type_column($mysqli);
+tss_fsc_schema($mysqli);
+if (empty($_SESSION['tss_fsc_csrf'])) $_SESSION['tss_fsc_csrf'] = bin2hex(random_bytes(24));
+$tssFscRetry = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['save_tss_fsc_rule','delete_tss_fsc_rule'], true)) {
+  $_GET['vendor'] = 'tss';
+  try {
+    if (!hash_equals($_SESSION['tss_fsc_csrf'], (string)($_POST['tss_fsc_csrf'] ?? ''))) throw new RuntimeException('The FSC form expired. Reload and try again.');
+    if ($_POST['action'] === 'save_tss_fsc_rule') {
+      tss_fsc_save_rule($mysqli, $_POST);
+      $tssFscMessage = 'FSC rule saved. Existing loads retain their saved rates and amounts.';
+    } else {
+      $id = (int)($_POST['rule_id'] ?? 0);
+      $tssFscMessage = 'FSC rule deleted. Existing loads retain their saved rates and amounts.';
+      $stmt = $mysqli->prepare('DELETE FROM tss_fsc_rules WHERE id=?');
+      $stmt->bind_param('i', $id);
+      $stmt->execute();
+      $stmt->close();
+    }
+  } catch (Throwable $e) {
+    $errors[] = 'TSS FSC: ' . $e->getMessage();
+    if ($_POST['action'] === 'save_tss_fsc_rule') $tssFscRetry = array_merge(['id'=>(int)($_POST['rule_id'] ?? 0)], $_POST);
+  }
+}
+
 ensure_ls_detail_broker_fee_override_column($mysqli);
 lonestar_vendor_broker_fees_ensure_table($mysqli);
 $driverOptions = get_driver_dropdown_options($mysqli);
@@ -1918,8 +1944,20 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['action'] ?? '') === 'sa
   $fuelSurchargeRaw = trim((string)($_POST['fuel_surcharge_rate'] ?? ''));
   $fuelSurchargeType = normalize_fuel_surcharge_type($_POST['fuel_surcharge_type'] ?? 'mileage');
   $postedDetail = is_array($_POST['ls_detail'] ?? null) ? $_POST['ls_detail'] : [];
+  $fscReviewAmount = null;
+  try {
+    $fuelSurchargeType = tss_fsc_type($_POST['fuel_surcharge_type'] ?? '');
+    if ($fuelSurchargeType === 'none') $fuelSurchargeRaw = '0';
+    $fscReviewAmount = $fuelSurchargeType === 'none' ? 0.0 : round(
+      tss_fsc_number($fuelSurchargeRaw === '' ? 0 : $fuelSurchargeRaw, 'FSC rate', 4) *
+      tss_fsc_number($postedDetail[$fuelSurchargeType === 'tonnage' ? 'Net Weight (Tons)' : 'Mileage'] ?? '', 'FSC quantity'), 2);
+    if ($fscReviewAmount > 9999999999.99) throw new InvalidArgumentException('FSC amount exceeds the supported range.');
+  } catch (InvalidArgumentException $e) { $fscReviewError = $e->getMessage(); }
 
-  if ($oldTicketNumber === '' || $oldDeliveryDate === '' || $oldUploadDate === '') {
+
+  if (isset($fscReviewError)) {
+    $errors[] = $fscReviewError;
+  } elseif ($oldTicketNumber === '' || $oldDeliveryDate === '' || $oldUploadDate === '') {
     $errors[] = 'Unable to locate the TSS review row to update.';
   } elseif ($rawValue !== '' && (!is_numeric(str_replace('%', '', $rawValue)) || (float)str_replace('%', '', $rawValue) < 0 || (float)str_replace('%', '', $rawValue) > 100)) {
     $errors[] = 'Broker fee override must be a percentage between 0 and 100.';
@@ -1957,6 +1995,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (($_POST['action'] ?? '') === 'sa
       $assignments[] = 'total_bonuses = ' . ($totalBonusesRaw === '' ? 'NULL' : "'" . $mysqli->real_escape_string(number_format((float)str_replace(['$', ','], '', $totalBonusesRaw), 2, '.', '')) . "'");
       $assignments[] = 'fuel_surcharge_rate = ' . ($fuelSurchargeRaw === '' ? 'NULL' : "'" . $mysqli->real_escape_string(number_format((float)str_replace(['$', ','], '', $fuelSurchargeRaw), 4, '.', '')) . "'");
       $assignments[] = "fuel_surcharge_type = '" . $mysqli->real_escape_string($fuelSurchargeType) . "'";
+      $assignments[] = 'fuel_surcharge_amount = ' . number_format($fscReviewAmount, 2, '.', '');
       $assignments[] = 'broker_fee_override_pct = ' . ($rawValue === '' ? 'NULL' : "'" . $mysqli->real_escape_string(number_format((float)str_replace('%', '', $rawValue), 2, '.', '')) . "'");
 
       $where = "`Truckload ID` = '" . $mysqli->real_escape_string($oldTicketNumber) . "'"
@@ -4423,8 +4462,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['action'])) {
           ensure_ls_detail_broker_fee_override_column($mysqli);
           $trailerPctHeaderIdx = find_first_header_index($headersRow, $optionalTrailerPctHeaders);
           $totalBonusesHeaderIdx = find_first_header_index($headersRow, ['Total Bonuses', 'Total Bonus']);
-          $fuelSurchargeRateHeaderIdx = find_first_header_index($headersRow, ['Fuel Surcharge Rate', 'fuel surcharge rate']);
-          $fuelSurchargeTypeHeaderIdx = find_first_header_index($headersRow, ['Fuel Surcharge Type', 'fuel surcharge type']);
+          $fuelSurchargeTypeHeaderIdx = find_first_header_index($headersRow, ['FSC Type', 'fsc type', 'Fuel Surcharge Type', 'fuel surcharge type']);
+
+          // Validate every FSC assignment before inserting any raw rows or payouts.
+          $tssFscAssignments = [];
+          $tssFscRules = tss_fsc_rules($mysqli);
+          foreach ($dataRows as $rowIndex => $row) {
+            if (!array_filter($row, static fn($v) => trim((string)$v) !== '')) { unset($dataRows[$rowIndex]); continue; }
+            try {
+              $tssFscAssignments[$rowIndex] = tss_fsc_resolve(
+                $tssFscRules,
+                parse_any_date($row[array_search('Delivery Date', $headersRow, true)] ?? '', TSS_SOURCE_TIMEZONE) ?: '',
+                $row[array_search('Mileage', $headersRow, true)] ?? '',
+                $row[array_search('Net Weight (Tons)', $headersRow, true)] ?? '',
+                $fuelSurchargeTypeHeaderIdx === null ? '' : ($row[$fuelSurchargeTypeHeaderIdx] ?? '')
+              );
+            } catch (InvalidArgumentException $e) {
+              $errors[] = 'LS Detail row ' . ($rowIndex + 2) . ': ' . $e->getMessage();
+            }
+          }
 
           // Insert raw rows (audit)
           $colsEsc = array_map(function($h) use ($mysqli){
@@ -4437,9 +4493,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['action'])) {
           $colsEsc[] = '`total_bonuses`';
           $colsEsc[] = '`fuel_surcharge_rate`';
           $colsEsc[] = '`fuel_surcharge_type`';
+          $colsEsc[] = '`fuel_surcharge_amount`';
           $colList = implode(',', $colsEsc);
 
-          foreach ($dataRows as $row) {
+          foreach (empty($errors) ? $dataRows : [] as $rowIndex => $row) {
             $vals = [];
             foreach ($expectedHeaders as $h) {
               $idx = array_search($h, $headersRow, true);
@@ -4456,10 +4513,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['action'])) {
             }
             $totalBonuses = ($totalBonusesHeaderIdx !== null) ? parse_money($row[$totalBonusesHeaderIdx] ?? null) : null;
             $vals[] = ($totalBonuses === null) ? "NULL" : "'" . $mysqli->real_escape_string(number_format($totalBonuses, 2, '.', '')) . "'";
-            $fuelSurchargeRate = ($fuelSurchargeRateHeaderIdx !== null) ? parse_money($row[$fuelSurchargeRateHeaderIdx] ?? null) : null;
-            $vals[] = ($fuelSurchargeRate === null) ? "NULL" : "'" . $mysqli->real_escape_string(number_format($fuelSurchargeRate, 4, '.', '')) . "'";
-            $fuelSurchargeType = normalize_fuel_surcharge_type($fuelSurchargeTypeHeaderIdx !== null ? ($row[$fuelSurchargeTypeHeaderIdx] ?? '') : 'mileage');
-            $vals[] = "'" . $mysqli->real_escape_string($fuelSurchargeType) . "'";
+            $fsc = $tssFscAssignments[$rowIndex];
+            $vals[] = "'" . number_format($fsc['rate'], 4, '.', '') . "'";
+            $vals[] = "'" . $mysqli->real_escape_string($fsc['type']) . "'";
+            $vals[] = "'" . number_format($fsc['amount'], 2, '.', '') . "'";
             $sqlRaw = "INSERT IGNORE INTO ls_detail_raw ($colList) VALUES (" . implode(',', $vals) . ")";
             if (!$mysqli->query($sqlRaw)) {
               $errors[] = 'Raw insert error: ' . $mysqli->error;
@@ -4996,6 +5053,7 @@ function render_vendor_broker_fee_form(array $settings): void {
         <?php render_vendor_broker_fee_form($vendorBrokerFeeSettings['tss']); ?>
         <?php render_vendor_broker_fee_form($vendorBrokerFeeSettings['tss_company']); ?>
       </div>
+      <?php require __DIR__ . '/includes/tss_fsc_form.php'; ?>
       <form method="post" enctype="multipart/form-data">
         <input type="hidden" name="upload_mode" value="ls_detail">
         <div class="row g-3 align-items-end">
@@ -5378,8 +5436,10 @@ function render_vendor_broker_fee_form(array $settings): void {
                     <?php $fuelSurchargeType = normalize_fuel_surcharge_type($tssRow['fuel_surcharge_type'] ?? 'mileage'); ?>
                     <select form="<?= h($tssFormId) ?>" name="fuel_surcharge_type" class="form-select form-select-sm" style="min-width: 120px;">
                       <option value="mileage" <?= $fuelSurchargeType === 'mileage' ? 'selected' : '' ?>>Mileage</option>
+                      <option value="none" <?= $fuelSurchargeType === 'none' ? 'selected' : '' ?>>None</option>
                       <option value="tonnage" <?= $fuelSurchargeType === 'tonnage' ? 'selected' : '' ?>>Tonnage</option>
                     </select>
+                    <div class="small text-muted">FSC: $<?= number_format((float)($tssRow['fuel_surcharge_amount'] ?? ((float)str_replace(',', '', (string)($tssRow[$fuelSurchargeType === 'tonnage' ? 'Net Weight (Tons)' : 'Mileage'] ?? 0)) * (float)($tssRow['fuel_surcharge_rate'] ?? 0))), 2) ?></div>
                   </td>
                   <td>
                     <input form="<?= h($tssFormId) ?>" type="number" name="broker_fee_override_pct" value="<?= h($brokerOverride !== '' && $brokerOverride !== null ? number_format((float)$brokerOverride, 2, '.', '') : '') ?>" min="0" max="100" step="0.01" class="form-control form-control-sm" style="min-width: 110px;">
