@@ -56,10 +56,33 @@ function rtex_save_fsc_settings(mysqli $db, string $week, $driver, $invoice): vo
     $stmt->close();
 }
 
+// Reports can run before upload.php has migrated the load snapshot columns.
+// Preserve legacy weekly rates during that window; never treat missing schema
+// as a reason to silently drop earned FSC from payroll.
+function rtex_driver_fsc_sql(mysqli $db): ?string {
+    $check = $db->query("SHOW TABLES LIKE 'rtex_payout_rows'");
+    if (!$check || !$check->num_rows) return null;
+    $check->close();
+    $columns = $db->query('SHOW COLUMNS FROM rtex_payout_rows')->fetch_all(MYSQLI_ASSOC);
+    $fields = array_column($columns, 'Field');
+    if (!in_array('billing_mode', $fields, true)) return null;
+    $check = $db->query("SHOW TABLES LIKE 'rtex_fsc_settings'");
+    $hasWeekly = $check && $check->num_rows > 0;
+    if ($check) $check->close();
+    $weekly = $hasWeekly
+        ? '(SELECT s.driver_fsc_rate FROM rtex_fsc_settings s WHERE s.payout_week_start=DATE_SUB(r.work_date,INTERVAL (DAYOFWEEK(r.work_date)-1) DAY))'
+        : '0';
+    return in_array('driver_fsc_rate', $fields, true)
+        ? "COALESCE(r.driver_fsc_rate,{$weekly},0)"
+        : "COALESCE({$weekly},0)";
+}
+
 function lonestar_driver_rtex_week_fuel_surcharge_total(mysqli $db, int $driverId, string $start, string $end): float {
     if ($driverId <= 0) return 0.0;
+    $rateSql = rtex_driver_fsc_sql($db);
+    if ($rateSql === null) return 0.0;
     // The linked payout ensures unsaved drafts and removed payout records do not earn FSC.
-    $stmt = $db->prepare("SELECT COALESCE(SUM(ROUND(r.total_amount * r.driver_fsc_rate / 100,2)),0)
+    $stmt = $db->prepare("SELECT COALESCE(SUM(ROUND(r.total_amount * {$rateSql} / 100,2)),0)
         FROM rtex_payout_rows r
         JOIN driver_payouts dp ON dp.id=r.driver_payout_id AND dp.vendor_name='RTEX'
         WHERE r.billing_mode='load' AND r.matched_contact_id=? AND r.work_date BETWEEN ? AND ?");
@@ -87,7 +110,9 @@ function rtex_driver_statement_fsc(mysqli $db, array $payoutRows): array {
     $exists = $check->num_rows > 0;
     $check->close();
     if (!$exists) return $out;
-    $stmt = $db->prepare("SELECT total_amount,driver_fsc_rate FROM rtex_payout_rows WHERE billing_mode='load' AND ticket_number=? AND work_date=? LIMIT 1");
+    $rateSql = rtex_driver_fsc_sql($db);
+    if ($rateSql === null) return $out;
+    $stmt = $db->prepare("SELECT r.total_amount,{$rateSql} FROM rtex_payout_rows r WHERE r.billing_mode='load' AND r.ticket_number=? AND r.work_date=? LIMIT 1");
     if (!$stmt) return $out;
     foreach ($payoutRows as $row) {
         $date = (string)($row['payout_date'] ?? '');
