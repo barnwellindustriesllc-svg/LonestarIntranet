@@ -30,3 +30,7 @@ org/seed_admin_web.php
 
 # Historical/backup PHP files
 org/*_062526
+
+# Generated payout exports and statement cache
+/org/exports/payouts_*
+/org/statement_cache/

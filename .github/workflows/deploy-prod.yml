@@ -93,6 +93,14 @@ jobs:
             echo "Checking PROD working trees..."
 
             for REPO in "$COM_REPO" "$ORG_REPO"; do
+              # Bootstrap runtime exclusions before the new .gitignore is deployed.
+              # Tracked edits and other untracked files still block deployment.
+              EXCLUDE_FILE="$(git -C "$REPO" rev-parse --absolute-git-dir)/info/exclude"
+              for PATTERN in '/org/exports/payouts_*' '/org/statement_cache/'; do
+                if ! grep -qxF "$PATTERN" "$EXCLUDE_FILE"; then
+                  printf '\n%s\n' "$PATTERN" >> "$EXCLUDE_FILE"
+                fi
+              done
               if [ -n "$(git -C "$REPO" status --porcelain)" ]; then
                 echo "ERROR: Working tree is dirty: $REPO"
                 git -C "$REPO" status --short
