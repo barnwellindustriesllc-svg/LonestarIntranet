@@ -81,7 +81,7 @@ function render_rtex_load_fields(array $row, array $jobs, array $drivers, string
       <?php if ($saved): ?>
         <div class="col-12 form-check ms-2">
           <input id="<?= h($key) ?>Reprice" type="checkbox" name="apply_current_rate" value="1" class="form-check-input" <?= !empty($row['apply_current_rate']) ? 'checked' : '' ?>>
-          <label for="<?= h($key) ?>Reprice" class="form-check-label">Apply current Job Rate Key rate to this load</label>
+          <label for="<?= h($key) ?>Reprice" class="form-check-label">Apply current Job Rate Key base and FSC rates to this load</label>
         </div>
       <?php endif; ?>
       <p class="small text-muted mb-0">Pay = net US tons × per-ton rate, or billable miles × per-mile rate. Use the ticket's US tons, not pounds or metric tons.</p>
@@ -91,10 +91,10 @@ function render_rtex_load_fields(array $row, array $jobs, array $drivers, string
 ?>
 <div class="border rounded p-3 my-3">
   <h3 class="h5">RTEX Job Rate Key</h3>
-  <p class="small text-muted">Choose how each job is billed. Rate changes apply to new loads; saved loads keep their historical rate unless you choose to reapply it.</p>
+  <p class="small text-muted">Choose how each job is billed. Base and FSC rate changes apply to new loads; saved loads keep their historical rates unless you choose to reapply them. Driver FSC is paid separately without broker fees. Invoice FSC applies only to invoice exports.</p>
   <div class="table-responsive">
     <table class="table table-sm align-middle">
-      <thead><tr><th>Job</th><th>Calculation</th><th>Rate</th><th>Default P.O. / Work Order</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Job</th><th>Calculation</th><th>Rate</th><th>Driver FSC Rate (%)</th><th>RTEX Invoice FSC Rate (%)</th><th>Default P.O. / Work Order</th><th>Actions</th></tr></thead>
       <tbody>
         <?php foreach ($rtexJobRates as $job): $formId = 'rtexJob' . (int)$job['id']; ?>
           <tr>
@@ -108,6 +108,9 @@ function render_rtex_load_fields(array $row, array $jobs, array $drivers, string
               <option value="mileage" <?= $job['rate_basis'] === 'mileage' ? 'selected' : '' ?>>Mileage ($/mile)</option>
             </select></td>
             <td><input aria-label="Job rate" form="<?= h($formId) ?>" name="rate" type="number" min="0.01" step="0.01" value="<?= h($job['rate']) ?>" class="form-control" required></td>
+            <?php foreach (['driver_fsc_rate'=>'Driver FSC Rate (%)','invoice_fsc_rate'=>'RTEX Invoice FSC Rate (%)'] as $field=>$label): ?>
+            <td><input aria-label="<?= h($label) ?>" form="<?= h($formId) ?>" name="<?= h($field) ?>" type="number" min="0" max="100" step="0.01" value="<?= h($job[$field]) ?>" class="form-control" required></td>
+            <?php endforeach; ?>
             <td><input aria-label="Work order" form="<?= h($formId) ?>" name="work_order" value="<?= h($job['work_order']) ?>" maxlength="80" class="form-control"></td>
             <td class="text-nowrap">
               <button form="<?= h($formId) ?>" name="action" value="save_rtex_job_rate" class="btn btn-sm btn-outline-primary">Save</button>
@@ -115,7 +118,7 @@ function render_rtex_load_fields(array $row, array $jobs, array $drivers, string
             </td>
           </tr>
         <?php endforeach; ?>
-        <?php if (!$rtexJobRates): ?><tr><td colspan="5">Add a job rate to begin entering or importing loads.</td></tr><?php endif; ?>
+        <?php if (!$rtexJobRates): ?><tr><td colspan="7">Add a job rate to begin entering or importing loads.</td></tr><?php endif; ?>
       </tbody>
     </table>
   </div>
@@ -127,6 +130,9 @@ function render_rtex_load_fields(array $row, array $jobs, array $drivers, string
     <div class="col-md-3"><label for="rtexNewBasis" class="form-label">Calculate By</label><select id="rtexNewBasis" name="rate_basis" class="form-select"><option value="tonnage">Tonnage ($/ton)</option><option value="mileage">Mileage ($/mile)</option></select></div>
     <div class="col-md-2"><label for="rtexNewRate" class="form-label">Rate</label><input id="rtexNewRate" name="rate" type="number" min="0.01" step="0.01" class="form-control" required></div>
     <div class="col-md-2"><label for="rtexNewOrder" class="form-label">P.O. / Work Order</label><input id="rtexNewOrder" name="work_order" maxlength="80" class="form-control"></div>
+    <?php foreach (['driver_fsc_rate'=>'Driver FSC Rate (%)','invoice_fsc_rate'=>'RTEX Invoice FSC Rate (%)'] as $field=>$label): ?>
+    <div class="col-md-3"><label for="rtexNew<?= h($field) ?>" class="form-label"><?= h($label) ?></label><input id="rtexNew<?= h($field) ?>" name="<?= h($field) ?>" type="number" min="0" max="100" step="0.01" value="0" class="form-control" required></div>
+    <?php endforeach; ?>
     <div class="col-md-2"><button class="btn btn-primary">Add Job</button></div>
   </form>
 </div>

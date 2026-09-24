@@ -7,53 +7,26 @@ if (empty($_SESSION['rtex_csrf'])) $_SESSION['rtex_csrf'] = bin2hex(random_bytes
 $rtexLoadForm = null;
 $rtexLoadWarnings = [];
 $rtexAction = (string)($_POST['action'] ?? '');
-$rtexLoadActions = ['save_rtex_load_settings','save_rtex_job_rate','delete_rtex_job_rate','import_rtex_bols','save_rtex_load',
+$rtexLoadActions = ['save_rtex_job_rate','delete_rtex_job_rate','import_rtex_bols','save_rtex_load',
     'delete_rtex_loads','discard_rtex_draft','export_rtex_load_invoices'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($rtexAction, $rtexLoadActions, true)) {
     $lastUploadType = 'rtex_review';
     $rtexMode = $_SESSION['rtex_mode'] = 'load';
     try {
         if (!hash_equals($_SESSION['rtex_csrf'], (string)($_POST['rtex_csrf'] ?? ''))) throw new RuntimeException('The form expired. Reload the page and try again.');
-        if ($rtexAction === 'save_rtex_load_settings') {
-            $week = rtex_fsc_week((string)($_POST['rtex_week_start'] ?? ''));
-            $driverRate = rtex_fsc_percent($_POST['driver_fsc_rate'] ?? '');
-            $invoiceRate = rtex_fsc_percent($_POST['invoice_fsc_rate'] ?? '');
-            $feeMode = (string)($_POST['fee_mode'] ?? '');
-            $rawFee = trim((string)($_POST['fee_value'] ?? ''));
-            if (!in_array($feeMode,['flat','percentage'],true) || !is_numeric($rawFee)
-                || !is_finite((float)$rawFee) || (float)$rawFee < 0
-                || ($feeMode === 'percentage' && (float)$rawFee > 100)) {
-                throw new InvalidArgumentException('Enter a valid broker fee.');
-            }
-            $before = rtex_fsc_settings($mysqli,$week);
-            $beforeBroker = lonestar_vendor_broker_fee_settings($mysqli,'rtex');
-            $mysqli->begin_transaction();
-            try {
-                rtex_save_fsc_settings($mysqli,$week,$driverRate,$invoiceRate);
-                $stmt = rtex_stmt($mysqli, "UPDATE vendor_broker_fees SET fee_mode=?,fee_value=?,updated_at=NOW() WHERE vendor_scope='rtex'",
-                    'sd',[$feeMode,round((float)$rawFee,2)]);
-                $stmt->close();
-                $mysqli->commit();
-            } catch (Throwable $e) {
-                $mysqli->rollback();
-                throw $e;
-            }
-            audit_log_change($mysqli,'update','upload_rtex_fsc_settings',$week,'Updated RTEX broker fee and weekly FSC rates',
-                $before + ['fee_mode'=>$beforeBroker['fee_mode'],'fee_value'=>$beforeBroker['fee_value']],
-                ['driver_fsc_rate'=>$driverRate,'invoice_fsc_rate'=>$invoiceRate,'fee_mode'=>$feeMode,'fee_value'=>(float)$rawFee]);
-            $success = true;
-            $rtexPayoutSummary = ['review_message'=>'RTEX broker fee saved. FSC rates apply to load-based work for the week of ' . $week . '.'];
-        } elseif ($rtexAction === 'save_rtex_job_rate') {
+        if ($rtexAction === 'save_rtex_job_rate') {
             $id = (int)($_POST['job_rate_id'] ?? 0);
             $name = trim((string)($_POST['job_name'] ?? ''));
             $basis = (string)($_POST['rate_basis'] ?? '');
             $rate = round(parse_money($_POST['rate'] ?? 0), 2);
+            $driverRate = rtex_fsc_percent($_POST['driver_fsc_rate'] ?? '');
+            $invoiceRate = rtex_fsc_percent($_POST['invoice_fsc_rate'] ?? '');
             $order = trim((string)($_POST['work_order'] ?? ''));
             if ($name === '' || strlen($name) > 255 || strlen($order) > 80) throw new InvalidArgumentException('Enter a job name (up to 255 characters) and work order (up to 80).');
             rtex_load_total($basis, 1, 1, $rate);
             $stmt = $id > 0
-                ? rtex_stmt($mysqli, 'UPDATE rtex_job_rates SET job_name=?,rate_basis=?,rate=?,work_order=? WHERE id=?', 'ssdsi', [$name,$basis,$rate,$order,$id])
-                : rtex_stmt($mysqli, 'INSERT INTO rtex_job_rates (job_name,rate_basis,rate,work_order) VALUES (?,?,?,?)', 'ssds', [$name,$basis,$rate,$order]);
+                ? rtex_stmt($mysqli, 'UPDATE rtex_job_rates SET job_name=?,rate_basis=?,rate=?,work_order=?,driver_fsc_rate=?,invoice_fsc_rate=? WHERE id=?', 'ssdsddi', [$name,$basis,$rate,$order,$driverRate,$invoiceRate,$id])
+                : rtex_stmt($mysqli, 'INSERT INTO rtex_job_rates (job_name,rate_basis,rate,work_order,driver_fsc_rate,invoice_fsc_rate) VALUES (?,?,?,?,?,?)', 'ssdsdd', [$name,$basis,$rate,$order,$driverRate,$invoiceRate]);
             $stmt->close();
             $success = true;
             $rtexPayoutSummary = ['review_message'=>'RTEX job rate saved. Existing loads retain their saved rates.'];
@@ -122,7 +95,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($rtexAction, $rtexLoadActi
         } elseif ($rtexAction === 'export_rtex_load_invoices') {
             $week = (string)($_POST['rtex_week_start'] ?? '');
             if (!rtex_valid_date($week)) throw new InvalidArgumentException('Select a valid invoice week.');
-            $invoiceFscSettings = rtex_fsc_settings($mysqli,$week);
             $exportStamp = gmdate('Ymd_His') . '_' . bin2hex(random_bytes(3));
             $groups = [];
             foreach (get_rtex_review_rows($mysqli, $week) as $row) {
@@ -138,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($rtexAction, $rtexLoadActi
                 foreach ($groups as $job => $rows) {
                     $safeName = substr(trim(preg_replace('/[^A-Za-z0-9_-]+/', '_', $job), '_'), 0, 100) ?: 'Job';
                     $filename = 'rtex_' . (++$index) . '_' . $safeName . '_' . str_replace('-', '', $week) . '_' . $exportStamp . '.xlsx';
-                    if (!$zip->addFromString($filename, build_rtex_load_invoice_xlsx($rows,(float)$invoiceFscSettings['invoice_fsc_rate'], $week, $index))) throw new RuntimeException('Cannot write invoice workbook.');
+                    if (!$zip->addFromString($filename, build_rtex_load_invoice_xlsx($rows,0.0, $week, $index))) throw new RuntimeException('Cannot write invoice workbook.');
                 }
                 $zip->close();
                 $content = file_get_contents($path);

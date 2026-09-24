@@ -52,15 +52,9 @@ hourly statements keep their existing pay calculation.
 
 ## Driver and invoice fuel surcharges
 
-In the load-based view, Driver FSC Rate (%) and RTEX Invoice FSC Rate (%) appear
-on the same settings row as RTEX Broker Fee. Both start at 0%. Save Settings saves
-the broker fee and both FSC rates together. Invalid input saves none of them.
-
-FSC rates belong to the selected payout week shown below the settings row.
-Changing the weekly-review selection changes the rates being edited. Saving a
-rate applies to existing and new load-based work in that week; a new week starts
-at 0%. Historical weeks keep their own rates. The broker-fee setting continues
-to use the application's existing vendor-wide scope.
+Both FSC percentages are configured in RTEX Job Rate Key, independently per job.
+New keys start at 0%. Each saved load retains its base and FSC rates until the
+current job rates are explicitly reapplied. Broker fees remain vendor-wide.
 
 - Driver FSC = round(base load freight × Driver FSC Rate / 100, 2) per load.
   Driver PDF, CSV, and Excel statements show a separate dated/ticketed FSC line
@@ -79,11 +73,9 @@ For example, $1,000 base freight with a 10% broker fee, 15% Driver FSC, and 25%
 Invoice FSC produces a $100 broker fee and $150 Driver FSC. Driver net before
 other deductions is $1,050. The RTEX invoice total is independently $1,250.
 
-includes/rtex_fsc.php supplies the weekly settings, validation, and shared
-calculations. The repeatable initializer creates rtex_fsc_settings with a
-payout_week_start primary key and two DECIMAL percentage fields defaulting to
-zero. FSC rate changes are recorded in change_logs. Off-cycle statements use
-each load's original work-week rate, rather than the upload-week rate.
+includes/rtex_fsc.php supplies validation and shared calculations. Schema setup
+preserves legacy loads by copying their former weekly percentages into the load.
+Off-cycle statements use the load's saved FSC percentage.
 
 ## Storage and deployment
 
@@ -150,10 +142,10 @@ FSC verification:
 
 This runs the 56 RTEX checks plus 42 FSC checks, including the 15%/25%
 example, brokerage exclusion, actual net-pay and pre-deduction calculations,
-weekly rate isolation, separate statement rows, invoice formulas, audit logging,
-and settings validation. It uses the same disposable local database described
-above. The browser fixture also verifies both settings fields, defaults, layout,
-form association, selected-week preservation, and percentage validation.
+per-job rate isolation, separate statement rows, invoice formulas, historical migration,
+and job percentage validation. It uses the same disposable local database described
+above. The browser fixture also verifies both job fields, defaults, layout,
+form association, saved job values, and percentage validation.
 
 Manual Add RTEX Row uses Job Rate Key, Matched Driver, BOL Date, Ticket / BOL #, Truck No., P.O. / Work Order, and one quantity field. The quantity unit follows the selected job (net US tons or miles); changing units clears the quantity to avoid reusing tons as miles. Provider, customer, BOL job number, and product are optional metadata retained in import review and editing, but omitted from manual entry.
 
@@ -164,3 +156,12 @@ Weekly Review Edit uses the same entry fields as Add RTEX Row, prefilled with th
 RTEX driver statements show Driver Fuel Surcharge only in the summary; individual load FSC rows are omitted. The owner payout report uses the same RTEX broker and FSC calculation as driver statements and retains insurance, allocated fuel, miscellaneous adjustments, and open-balance deductions.
 
 Invoice exports use includes/templates/rtex_invoice.xlsx, based on the supplied example, including its logo, company address, Bill to details, merged cells, column widths, and gray header at row 11. Loads begin at row 12. Invoice numbers use LS plus the selected week start and the job export index; invoice date is the Saturday ending that week. Upload the template together with includes/rtex_load_helpers.php and includes/rtex_load_actions.php. Each export replaces sample rows with all current saved loads and recalculates formula positions and totals.
+
+FSC rates are configured per job in RTEX Job Rate Key. Both driver and invoice
+percentages default to zero for job keys and are copied to each new load. Editing
+a saved load preserves its base and FSC rates unless Apply current Job Rate Key
+base and FSC rates is selected (or the job changes). Existing loads receive their
+previous weekly FSC percentages during the automatic schema migration. The legacy
+weekly settings remain only for historical migration; new calculations use saved
+load rates. Driver FSC remains excluded from broker fees and invoice FSC remains
+excluded from driver pay.

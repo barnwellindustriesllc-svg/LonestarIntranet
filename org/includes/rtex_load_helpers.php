@@ -82,6 +82,22 @@ function ensure_rtex_load_schema(mysqli $db): void {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_rtex_job_name (job_name)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) throw new RuntimeException($db->error);
+    foreach (['rtex_job_rates', 'rtex_payout_rows'] as $table) {
+        foreach (['driver_fsc_rate', 'invoice_fsc_rate'] as $column) {
+            $check = $db->query("SHOW COLUMNS FROM {$table} LIKE '{$column}'");
+            $exists = $check->num_rows > 0;
+            $check->close();
+            if (!$exists && !$db->query("ALTER TABLE {$table} ADD COLUMN {$column} DECIMAL(5,2) " . ($table === 'rtex_job_rates' ? 'NOT NULL DEFAULT 0' : 'NULL DEFAULT NULL'))) {
+                throw new RuntimeException($db->error);
+            }
+        }
+    }
+    // Snapshot legacy weekly rates once, preserving historical driver and invoice totals.
+    if (!$db->query("UPDATE rtex_payout_rows r
+        LEFT JOIN rtex_fsc_settings s ON s.payout_week_start=DATE_SUB(r.work_date,INTERVAL (DAYOFWEEK(r.work_date)-1) DAY)
+        SET r.driver_fsc_rate=COALESCE(r.driver_fsc_rate,s.driver_fsc_rate,0),
+            r.invoice_fsc_rate=COALESCE(r.invoice_fsc_rate,s.invoice_fsc_rate,0)
+        WHERE r.billing_mode='load' AND (r.driver_fsc_rate IS NULL OR r.invoice_fsc_rate IS NULL)")) throw new RuntimeException($db->error);
     foreach (['rtex_payout_rows', 'rtex_job_rates', 'driver_payouts'] as $table) {
         rtex_ensure_auto_increment($db, $table);
     }
@@ -138,9 +154,9 @@ function rtex_save_load(mysqli $db, array $input, ?int $id = null): int {
         $row['job_rate_id'] = (int)($input['job_rate_id'] ?? 0);
         // Preserve the historical rate when editing a saved row unless explicitly reapplied.
         if ($old && $row['job_rate_id'] === (int)$old['job_rate_id'] && empty($input['apply_current_rate'])) {
-            foreach (['job_name','rate_basis','rate','work_order'] as $key) $row[$key] = $old[$key];
+            foreach (['job_name','rate_basis','rate','work_order','driver_fsc_rate','invoice_fsc_rate'] as $key) $row[$key] = $old[$key];
         } else {
-            $stmt = rtex_stmt($db, 'SELECT job_name, rate_basis, rate, work_order FROM rtex_job_rates WHERE id=?', 'i', [$row['job_rate_id']]);
+            $stmt = rtex_stmt($db, 'SELECT job_name, rate_basis, rate, work_order, driver_fsc_rate, invoice_fsc_rate FROM rtex_job_rates WHERE id=?', 'i', [$row['job_rate_id']]);
             $job = $stmt->get_result()->fetch_assoc();
             $stmt->close();
             if (!$job) throw new InvalidArgumentException('Select a job from the RTEX Job Rate Key.');
@@ -168,9 +184,9 @@ function rtex_save_load(mysqli $db, array $input, ?int $id = null): int {
 
         $fields = ['work_date','ticket_number','provider_name','customer_name','product_name','job_number','truck_raw',
             'driver_name','truck_digits','job_rate_id','job_name','rate_basis','rate','tons','miles','total_amount',
-            'work_order','matched_contact_id','source_file_name'];
+            'work_order','matched_contact_id','source_file_name','driver_fsc_rate','invoice_fsc_rate'];
         $params = array_map(static fn($field) => $row[$field], $fields);
-        $types = 'sssssssssissddddsis';
+        $types = 'sssssssssissddddsisdd';
         if ($old) {
             $sql = 'UPDATE rtex_payout_rows SET ' . implode(',', array_map(static fn($field) => $field . '=?', $fields))
                 . ',updated_at=NOW() WHERE id=?';
@@ -321,12 +337,13 @@ function build_rtex_load_invoice_xlsx(array $rows, float $invoiceFscRate = 0.0, 
         // Mileage remains part of pricing without a separate visible Miles column.
         $quantity = $row['rate_basis'] === 'mileage'
             ? number_format((float)$row['miles'], 2, '.', '') : "G{$n}";
-        $invoiceFsc = rtex_fsc_amount((float)$row['total_amount'], $invoiceFscRate);
+        $rowFscRate = rtex_fsc_percent($row['invoice_fsc_rate'] ?? $invoiceFscRate);
+        $invoiceFsc = rtex_fsc_amount((float)$row['total_amount'], $rowFscRate);
         $invoiceFscTotal += $invoiceFsc;
         $out[] = [$row['work_date'],$row['job_name'],$row['ticket_number'],
             $row['truck_raw'],$row['driver_name'],$row['rate_basis'],(float)$row['tons'],
             (float)$row['rate'],['formula'=>"ROUND({$quantity}*H{$n},2)",'value'=>(float)$row['total_amount']],
-            $row['work_order'],$invoiceFscRate,
+            $row['work_order'],$rowFscRate,
             ['formula'=>"ROUND(I{$n}*K{$n}/100,2)",'value'=>$invoiceFsc],
             ['formula'=>"I{$n}+L{$n}",'value'=>round((float)$row['total_amount']+$invoiceFsc,2)]];
     }

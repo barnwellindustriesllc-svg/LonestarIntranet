@@ -42,6 +42,14 @@ $manyRows = array_fill(0,25,$example);
 $manySheet = fsc_invoice_sheet($manyRows,25);
 check(fsc_cell($manySheet,'M37') === '31250' && fsc_cell($manySheet,'M37','f') === 'SUM(M12:M36)',
     'template expands to every load and totals the complete range');
+$mixedSheet = fsc_invoice_sheet([
+    array_merge($example,['invoice_fsc_rate'=>25]),
+    array_merge($example,['invoice_fsc_rate'=>10]),
+    array_merge($example,['invoice_fsc_rate'=>0]),
+],99);
+check(fsc_cell($mixedSheet,'L12') === '250' && fsc_cell($mixedSheet,'L13') === '100' && fsc_cell($mixedSheet,'L14') === '0',
+    'each load uses its saved invoice percentage including zero');
+check(fsc_cell($mixedSheet,'M15') === '3350','mixed invoice rates total correctly');
 $zeroSheet = fsc_invoice_sheet([$example],0);
 check(fsc_cell($zeroSheet,'L12') === '0' && fsc_cell($zeroSheet,'M12') === '1000','zero FSC leaves invoice base unchanged');
 
@@ -89,15 +97,29 @@ if (in_array('--database',$argv,true)) {
         $_SERVER['REQUEST_METHOD'] = 'POST';
         $_SESSION = ['rtex_csrf'=>'fsc-test-token'];
         $_GET = [];
-        $_POST = ['action'=>'save_rtex_load_settings','rtex_csrf'=>'fsc-test-token','rtex_week_start'=>'2026-09-06',
-            'fee_mode'=>'percentage','fee_value'=>'10','driver_fsc_rate'=>'15','invoice_fsc_rate'=>'25'];
+        $_POST = ['action'=>'save_rtex_job_rate','rtex_csrf'=>'fsc-test-token','job_rate_id'=>1,
+            'job_name'=>'FSC Job','rate_basis'=>'tonnage','rate'=>'10','work_order'=>'',
+            'driver_fsc_rate'=>'15','invoice_fsc_rate'=>'25'];
         $errors = [];
         $success = false;
         require $root . '/includes/rtex_load_actions.php';
-        check($success && !$errors,'settings POST saves both rates and broker fee');
-        check(rtex_fsc_settings($db,'2026-09-06') === ['driver_fsc_rate'=>15.0,'invoice_fsc_rate'=>25.0],'independent rates persisted');
-        check(rtex_fsc_settings($db,'2026-09-13') === ['driver_fsc_rate'=>0.0,'invoice_fsc_rate'=>0.0],'new week starts at zero');
-        check((int)$db->query("SELECT COUNT(*) FROM change_logs WHERE entity_type='upload_rtex_fsc_settings'")->fetch_row()[0] === 1,'FSC changes are audited');
+        check($success && !$errors,'job POST saves independent FSC rates');
+        check((float)rtex_load_row($db,$id)['driver_fsc_rate'] === 0.0,'job changes preserve saved loads');
+        rtex_save_load($db,$input + ['apply_current_rate'=>1],$id);
+        $db->query("UPDATE vendor_broker_fees SET fee_mode='percentage',fee_value=10 WHERE vendor_scope='rtex'");
+        $db->query("INSERT INTO rtex_job_rates(job_name,rate_basis,rate,driver_fsc_rate,invoice_fsc_rate)
+            VALUES ('Second FSC Job','tonnage',10,5,10)");
+        $secondId = rtex_save_load($db,array_merge($input,['job_rate_id'=>2,'ticket_number'=>'SECOND']));
+        check(lonestar_driver_rtex_week_fuel_surcharge_total($db,1,'2026-09-06','2026-09-12') === 200.0,'same week jobs use different driver rates');
+        $secondSheet = fsc_invoice_sheet([rtex_load_row($db,$secondId)],0);
+        check(fsc_cell($secondSheet,'M12') === '1100','second job uses its own invoice rate');
+        rtex_delete_loads($db,[$secondId]);
+        // Emulate a legacy load and verify repeatable backfill from its original week.
+        rtex_save_fsc_settings($db,'2026-09-06',15,25);
+        $db->query("UPDATE rtex_payout_rows SET driver_fsc_rate=NULL,invoice_fsc_rate=NULL WHERE id={$id}");
+        ensure_rtex_load_schema($db);
+        ensure_rtex_load_schema($db);
+        check((float)rtex_load_row($db,$id)['driver_fsc_rate'] === 15.0,'legacy rates migrated without changing totals');
 
         $actualRows = $db->query('SELECT * FROM driver_payouts')->fetch_all(MYSQLI_ASSOC);
         $details = rtex_driver_statement_fsc($db,$actualRows);
@@ -136,7 +158,7 @@ if (in_array('--database',$argv,true)) {
         $errors = [];
         $success = false;
         require $root . '/includes/rtex_load_actions.php';
-        check(!$success && count($errors) === 1,'invalid FSC settings rejected');
+        check(!$success && count($errors) === 1,'invalid job FSC rejected');
         check(lonestar_vendor_broker_fee_settings($db,'rtex')['fee_value'] === 10.0,'invalid FSC does not partially change broker fee');
 
         $input['tons'] = 200;

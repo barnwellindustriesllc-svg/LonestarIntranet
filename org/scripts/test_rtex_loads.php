@@ -271,8 +271,8 @@ if (in_array('--ui', $argv, true)) {
     $todayDate = '2026-09-10';
     $rtexReviewWeekStart = '2026-09-06';
     $rtexJobRates = [
-        ['id'=>1,'job_name'=>'Fernleaf','rate_basis'=>'tonnage','rate'=>'12.00','work_order'=>'EK10524'],
-        ['id'=>2,'job_name'=>'Haul Route','rate_basis'=>'mileage','rate'=>'3.25','work_order'=>''],
+        ['id'=>1,'job_name'=>'Fernleaf','rate_basis'=>'tonnage','rate'=>'12.00','work_order'=>'EK10524','driver_fsc_rate'=>15,'invoice_fsc_rate'=>25],
+        ['id'=>2,'job_name'=>'Haul Route','rate_basis'=>'mileage','rate'=>'3.25','work_order'=>'','driver_fsc_rate'=>5,'invoice_fsc_rate'=>10],
     ];
     $driverOptions = [['id'=>1,'name'=>'First Driver'],['id'=>2,'name'=>'Second Driver']];
     $rtexLoadForm = null;
@@ -280,11 +280,7 @@ if (in_array('--ui', $argv, true)) {
     $rtexReviewRows = [array_merge($invoiceRow,['id'=>1,'job_rate_id'=>1,'matched_contact_id'=>1,'matched_driver_name'=>'First Driver','source_file_name'=>'test.JPG'])];
     ob_start();
     echo '<!doctype html><html><head><meta charset="utf-8"><title>RTEX UI Test</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="p-4"><h1>RTEX Load Invoicing</h1><pre id="rtex-ui-result">Testing</pre><div id="rtex-section" data-mode="load">';
-    render_vendor_broker_fee_form(
-        ['vendor_scope'=>'rtex','label'=>'RTEX','fee_mode'=>'percentage','fee_value'=>10],
-        ['driver_fsc_rate'=>0,'invoice_fsc_rate'=>0],
-        $rtexReviewWeekStart
-    );
+    render_vendor_broker_fee_form(['vendor_scope'=>'rtex','label'=>'RTEX','fee_mode'=>'percentage','fee_value'=>10]);
     require $root . '/includes/rtex_load_form.php';
     require $root . '/includes/rtex_load_review.php';
     echo '</div><script>' . file_get_contents($root . '/includes/rtex_load_ui.js') . '</script>';
@@ -294,12 +290,12 @@ try {
   let checks = 0;
   const ok = (condition, label) => { if (!condition) throw new Error(label); checks++; };
   const change = (input, value) => { input.value = value; input.dispatchEvent(new Event('change', {bubbles:true})); };
-  const driverFsc = document.getElementById('rtexDriverFscRate');
-  const invoiceFsc = document.getElementById('rtexInvoiceFscRate');
-  ok(driverFsc.value === '0.00' && invoiceFsc.value === '0.00', 'FSC fields default to zero');
-  ok(driverFsc.form === invoiceFsc.form && driverFsc.form.querySelector('[name="fee_value"]'), 'FSC settings share broker fee form');
-  ok(driverFsc.form.querySelector('[name="action"]').value === 'save_rtex_load_settings', 'combined settings save action');
-  ok(driverFsc.form.querySelector('[name="rtex_week_start"]').value === '2026-09-06', 'FSC settings retain selected week');
+  const driverFsc = document.getElementById('rtexNewdriver_fsc_rate');
+  const invoiceFsc = document.getElementById('rtexNewinvoice_fsc_rate');
+  ok(Number(driverFsc.value) === 0 && Number(invoiceFsc.value) === 0, 'FSC fields default to zero');
+  ok(driverFsc.form === invoiceFsc.form && driverFsc.form.querySelector('[name="job_name"]'), 'FSC settings share job form');
+  ok(driverFsc.form.querySelector('[name="action"]').value === 'save_rtex_job_rate', 'combined settings save action');
+  ok(document.querySelector('[form="rtexJob1"][name="driver_fsc_rate"]').value === '15', 'existing job FSC displayed');
   change(driverFsc, '15'); change(invoiceFsc, '25');
   ok(driverFsc.checkValidity() && invoiceFsc.checkValidity(), '15 and 25 percent accepted');
   change(invoiceFsc, '101');

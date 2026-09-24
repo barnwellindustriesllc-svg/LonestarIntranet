@@ -4749,7 +4749,6 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $rtexReviewWeekStart)) {
 }
 $rtexReviewRows = array_values(array_filter(get_rtex_review_rows($mysqli, $rtexReviewWeekStart), static fn($row) => ($row['billing_mode'] ?? 'hourly') === $rtexMode));
 $rtexJobRates = rtex_job_rates($mysqli);
-$rtexFscSettings = rtex_fsc_settings($mysqli,$rtexReviewWeekStart);
 $nextierReviewWeekStart = trim((string)($_POST['nextier_week_start'] ?? ($_GET['nextier_week_start'] ?? '')));
 if ($lastUploadType === 'nextier_payout' && is_array($nextierPayoutSummary) && !empty($nextierPayoutSummary['last_week_start'])) {
   $nextierReviewWeekStart = (string)$nextierPayoutSummary['last_week_start'];
@@ -4767,20 +4766,14 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $nickelrockReviewWeekStart)) {
 $nickelrockJobRates = get_nickelrock_job_rates($mysqli);
 $nickelrockReviewRows = get_nickelrock_review_rows($mysqli, $nickelrockReviewWeekStart);
 
-function render_vendor_broker_fee_form(array $settings, ?array $rtexFsc = null, string $rtexWeek = ''): void {
-  $withFsc = $rtexFsc !== null && ($settings['vendor_scope'] ?? '') === 'rtex';
+function render_vendor_broker_fee_form(array $settings): void {
   $scope = (string)($settings['vendor_scope'] ?? 'tss');
   $label = (string)($settings['label'] ?? strtoupper($scope));
   $mode = (string)($settings['fee_mode'] ?? 'percentage');
   $value = number_format((float)($settings['fee_value'] ?? 0), 2, '.', '');
   ?>
   <form method="post" class="vendor-broker-settings mb-4">
-    <input type="hidden" name="action" value="<?= $withFsc ? 'save_rtex_load_settings' : 'save_vendor_broker_fee' ?>">
-    <?php if ($withFsc): ?>
-      <input type="hidden" name="rtex_mode" value="load">
-      <input type="hidden" name="rtex_week_start" value="<?= h($rtexWeek) ?>">
-      <input type="hidden" name="rtex_csrf" value="<?= h($_SESSION['rtex_csrf']) ?>">
-    <?php endif; ?>
+    <input type="hidden" name="action" value="save_vendor_broker_fee">
     <input type="hidden" name="vendor_scope" value="<?= h($scope) ?>">
     <div class="row g-3 align-items-end">
       <div class="col-12 col-lg">
@@ -4797,22 +4790,9 @@ function render_vendor_broker_fee_form(array $settings, ?array $rtexFsc = null, 
         <label class="form-label">Broker Fee</label>
         <input type="number" name="fee_value" value="<?= h($value) ?>" class="form-control" min="0" step="0.01">
       </div>
-      <?php if ($withFsc): ?>
-      <div class="col-12 col-md-3 col-lg-2">
-        <label for="rtexDriverFscRate" class="form-label">Driver FSC Rate (%)</label>
-        <input id="rtexDriverFscRate" type="number" name="driver_fsc_rate" value="<?= h(number_format((float)$rtexFsc['driver_fsc_rate'],2,'.','')) ?>" class="form-control" min="0" max="100" step="0.01" required>
-      </div>
-      <div class="col-12 col-md-3 col-lg-2">
-        <label for="rtexInvoiceFscRate" class="form-label">RTEX Invoice FSC Rate (%)</label>
-        <input id="rtexInvoiceFscRate" type="number" name="invoice_fsc_rate" value="<?= h(number_format((float)$rtexFsc['invoice_fsc_rate'],2,'.','')) ?>" class="form-control" min="0" max="100" step="0.01" required>
-      </div>
-      <?php endif; ?>
       <div class="col-auto">
-        <button type="submit" class="btn btn-outline-primary"><?= $withFsc ? 'Save Settings' : 'Save Fee' ?></button>
+        <button type="submit" class="btn btn-outline-primary">Save Fee</button>
       </div>
-      <?php if ($withFsc): ?>
-      <div class="col-12 small text-muted">FSC rates apply to load-based work for <?= h($rtexWeek) ?> through <?= h(business_week_end($rtexWeek)) ?>. Driver FSC is paid separately without broker fees. Invoice FSC appears only in the RTEX invoice export. Each new week starts at 0%.</div>
-      <?php endif; ?>
     </div>
   </form>
   <?php
@@ -6117,7 +6097,7 @@ function render_vendor_broker_fee_form(array $settings, ?array $rtexFsc = null, 
         <button class="btn btn-outline-primary">Switch Invoicing</button>
       </form>
       <p class="small text-muted">Hourly and load-based work can coexist in the same week. This view controls entry, review, and invoice exports.</p>
-      <?php render_vendor_broker_fee_form($vendorBrokerFeeSettings['rtex'], $rtexMode === 'load' ? $rtexFscSettings : null, $rtexReviewWeekStart); ?>
+      <?php render_vendor_broker_fee_form($vendorBrokerFeeSettings['rtex']); ?>
       <?php if ($rtexMode === 'load'): ?>
         <p class="small text-muted">The hourly brokerage fee applies only to hourly rows. Load pay uses the selected job rate; a percentage brokerage setting, if selected above, applies to base freight only, excluding driver FSC.</p>
         <?php require __DIR__ . '/includes/rtex_load_form.php'; ?>

@@ -57,13 +57,11 @@ function rtex_save_fsc_settings(mysqli $db, string $week, $driver, $invoice): vo
 }
 
 function lonestar_driver_rtex_week_fuel_surcharge_total(mysqli $db, int $driverId, string $start, string $end): float {
-    $settings = rtex_fsc_settings($db,$start);
-    if ($driverId <= 0 || (float)$settings['driver_fsc_rate'] === 0.0) return 0.0;
+    if ($driverId <= 0) return 0.0;
     // The linked payout ensures unsaved drafts and removed payout records do not earn FSC.
-    $stmt = $db->prepare("SELECT COALESCE(SUM(ROUND(r.total_amount * s.driver_fsc_rate / 100,2)),0)
+    $stmt = $db->prepare("SELECT COALESCE(SUM(ROUND(r.total_amount * r.driver_fsc_rate / 100,2)),0)
         FROM rtex_payout_rows r
         JOIN driver_payouts dp ON dp.id=r.driver_payout_id AND dp.vendor_name='RTEX'
-        JOIN rtex_fsc_settings s ON s.payout_week_start=DATE_SUB(r.work_date,INTERVAL (DAYOFWEEK(r.work_date)-1) DAY)
         WHERE r.billing_mode='load' AND r.matched_contact_id=? AND r.work_date BETWEEN ? AND ?");
     if (!$stmt) return 0.0;
     $stmt->bind_param('iss',$driverId,$start,$end);
@@ -89,21 +87,17 @@ function rtex_driver_statement_fsc(mysqli $db, array $payoutRows): array {
     $exists = $check->num_rows > 0;
     $check->close();
     if (!$exists) return $out;
-    $rates = [];
-    $stmt = $db->prepare("SELECT total_amount FROM rtex_payout_rows WHERE billing_mode='load' AND ticket_number=? AND work_date=? LIMIT 1");
+    $stmt = $db->prepare("SELECT total_amount,driver_fsc_rate FROM rtex_payout_rows WHERE billing_mode='load' AND ticket_number=? AND work_date=? LIMIT 1");
     if (!$stmt) return $out;
     foreach ($payoutRows as $row) {
         $date = (string)($row['payout_date'] ?? '');
         $ticket = (string)($row['ticket_number'] ?? '');
         $stmt->bind_param('ss',$ticket,$date);
         $stmt->execute();
-        $stmt->bind_result($base);
+        $stmt->bind_result($base,$percentage);
         $found = $stmt->fetch();
         $stmt->free_result();
         if (!$found) continue;
-        $week = rtex_fsc_week($date);
-        if (!isset($rates[$week])) $rates[$week] = rtex_fsc_settings($db,$week);
-        $percentage = (float)$rates[$week]['driver_fsc_rate'];
         $amount = rtex_fsc_amount((float)$base,$percentage);
         $out['load_gross'] += (float)$base;
         $out['total'] += $amount;
